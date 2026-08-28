@@ -42,8 +42,16 @@ def test_loop_is_optional_and_defaults_to_false(spring_document):
         },
         {"type": "helix", "radius": 14.0, "turns": 6.5, "height": 46.8},
         {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]},
+        {"type": "spline", "points": [[{"param": "x"}, 2.0, 3.0]]},
+        {
+            "type": "spline",
+            "points": [[0.0, 90.0, -35.0], [{"param": "x"}, 2.0, 3.0]],
+            "start_tangent": [0.0, 1.0, 0.0],
+            "end_tangent": [0.0, 0.0, {"param": "aim"}],
+        },
     ],
-    ids=["line", "line-params", "arc", "helix", "spline"],
+    ids=["line", "line-params", "arc", "helix", "spline", "spline-one-span",
+         "spline-clamped"],
 )
 def test_every_v1_primitive_validates(spring_document, primitive):
     spring_document["path"] = [primitive]
@@ -191,6 +199,27 @@ def test_a_polygon_is_sampled_at_its_own_points(spring_document):
         validate(spring_document)
     assert "tessellation.profile" in str(caught.value)
     assert "3" in str(caught.value)
+
+
+def test_a_spline_needs_a_point_to_run_toward(spring_document):
+    # A spline does not declare its start, so its declared points are what
+    # it runs through and toward: an empty list names nowhere to go.
+    spring_document["path"] = [{"type": "spline", "points": []}]
+    with pytest.raises(SpecError) as caught:
+        validate(spring_document)
+    assert "path[0].points" in str(caught.value)
+    assert "at least 1 point" in str(caught.value)
+
+
+@pytest.mark.parametrize("slot", ["start_tangent", "end_tangent"], ids=str)
+def test_a_spline_tangent_is_a_three_vector(spring_document, slot):
+    spring_document["path"] = [
+        {"type": "spline", "points": [[1.0, 2.0, 3.0]], slot: [0.0, 1.0]}
+    ]
+    with pytest.raises(SpecError) as caught:
+        validate(spring_document)
+    assert f"path[0].{slot}" in str(caught.value)
+    assert "3 numbers" in str(caught.value)
 
 
 def test_a_document_that_is_not_an_object_is_rejected():

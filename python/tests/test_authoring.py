@@ -103,6 +103,11 @@ def test_every_constructor_round_trips():
             Arc(center=(0.0, 0.0, 0.0), axis=(0.0, 0.0, 1.0), angle=P.sweep),
             Helix(radius=14.0, turns=6.5, height=46.8),
             Spline(points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0), (P.x, P.y, P.z)]),
+            Spline(
+                points=[(4.0, 5.0, 6.0)],
+                start_tangent=(0.0, 1.0, 0.0),
+                end_tangent=(0.0, 0.0, P.aim),
+            ),
         ],
         path_samples=720,
         profile_samples=4,
@@ -163,6 +168,33 @@ def test_a_closed_toothed_belt_carries_a_phase():
     assert document["path"][0]["phase"] == {"param": "travel"}
     assert "anchor" not in document["path"][0]
     assert "teeth" not in document["path"][0]
+
+
+def test_optional_spline_tangents_are_omitted_when_unset():
+    # An absent tangent is not a value the author could have written: it
+    # means "leave the way you came" at the start and "along the final
+    # chord" at the end, both of which follow parameter values.
+    assert Spline(points=[(1.0, 2.0, 3.0)]).to_dict() == {
+        "type": "spline",
+        "points": [[1.0, 2.0, 3.0]],
+    }
+
+
+def test_a_clamped_spline_carries_both_its_tangents():
+    document = Spline(
+        points=[(0.0, 90.0, -35.0), (P.head_x, P.head_y, P.head_z)],
+        start_tangent=(0.0, 1.0, 0.0),
+        end_tangent=(0.0, 0.0, -1.0),
+    ).to_dict()
+    assert document == {
+        "type": "spline",
+        "points": [
+            [0.0, 90.0, -35.0],
+            [{"param": "head_x"}, {"param": "head_y"}, {"param": "head_z"}],
+        ],
+        "start_tangent": [0.0, 1.0, 0.0],
+        "end_tangent": [0.0, 0.0, -1.0],
+    }
 
 
 def test_optional_wrap_fields_are_omitted_when_unset():
@@ -303,17 +335,23 @@ def test_an_authored_shape_and_its_document_evaluate_identically():
     assert authored.faces.tobytes() == parsed.faces.tobytes()
 
 
-def test_evaluating_an_unimplemented_primitive_names_it():
+def test_an_authored_loom_evaluates():
+    # The last primitive of the v1 vocabulary to arrive: an authored
+    # spline is an evaluation like any other.
     loom = Shape(
         profile=Circle(radius=2.0),
-        path=[Spline(points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)])],
+        path=[
+            Spline(
+                points=[(0.0, 90.0, -35.0), (P.head_x, P.head_y, P.head_z)],
+                start_tangent=(0.0, 1.0, 0.0),
+                end_tangent=(0.0, 0.0, -1.0),
+            )
+        ],
         path_samples=8,
         profile_samples=16,
     )
-    with pytest.raises(NotImplementedError) as caught:
-        loom.evaluate()
-    assert "spline" in str(caught.value)
-    assert "not implemented" in str(caught.value)
+    mesh = loom.evaluate(head_x=95.0, head_y=215.0, head_z=-45.0)
+    assert mesh.vertices.shape == (17 * 16 + 2, 3)
 
 
 def test_the_canonical_spring_evaluates():

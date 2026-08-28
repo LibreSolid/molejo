@@ -1,0 +1,16 @@
+{
+  "name": "spline end tangent given two components",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [
+      {
+        "type": "spline",
+        "points": [[0.0, 90.0, -35.0], [95.0, 215.0, -45.0]],
+        "end_tangent": [0.0, -1.0]
+      }
+    ],
+    "tessellation": {"path": 64, "profile": 16}
+  },
+  "must_mention": ["path[0].end_tangent", "3 numbers"]
+}

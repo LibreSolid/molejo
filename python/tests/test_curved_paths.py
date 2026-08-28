@@ -651,18 +651,6 @@ def test_a_dangling_parameter_in_a_later_primitive_names_that_slot():
 # --- what this batch still does not evaluate -------------------------------
 
 
-def test_an_unimplemented_primitive_in_a_chain_names_its_position():
-    primitive = {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
-    document = bend()
-    document["path"][2] = primitive
-    with pytest.raises(NotImplementedError) as caught:
-        molejo.evaluate(document)
-    message = str(caught.value)
-    assert "path[2]" in message
-    assert primitive["type"] in message
-    assert "not implemented" in message
-
-
 def test_a_chained_loop_is_still_not_evaluated():
     document = bend()
     document["loop"] = True

@@ -401,30 +401,6 @@ def test_a_non_positive_radius_is_refused():
 # --- what this batch does not evaluate yet ---------------------------------
 
 
-def test_an_unimplemented_primitive_names_itself():
-    document = cylinder()
-    document["path"] = [
-        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
-    ]
-    with pytest.raises(NotImplementedError) as caught:
-        molejo.evaluate(document)
-    message = str(caught.value)
-    assert "spline" in message
-    assert "path[0]" in message
-    assert "not implemented" in message
-
-
-def test_an_unimplemented_message_names_what_this_build_does_evaluate():
-    document = cylinder()
-    document["path"] = [
-        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
-    ]
-    with pytest.raises(NotImplementedError) as caught:
-        molejo.evaluate(document)
-    for name in ("line", "arc", "helix", "wrap"):
-        assert f"'{name}'" in str(caught.value)
-
-
 def test_a_closed_loop_of_a_chain_is_not_evaluated_yet():
     document = cylinder()
     document["loop"] = True
