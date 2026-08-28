@@ -404,8 +404,6 @@ def test_a_non_positive_radius_is_refused():
 @pytest.mark.parametrize(
     "primitive",
     [
-        {"type": "arc", "center": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0], "angle": 1.0},
-        {"type": "helix", "radius": 14.0, "turns": 6.5, "height": 46.8},
         {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]},
         {
             "type": "wrap",
@@ -415,7 +413,7 @@ def test_a_non_positive_radius_is_refused():
             ],
         },
     ],
-    ids=["arc", "helix", "spline", "wrap"],
+    ids=["spline", "wrap"],
 )
 def test_an_unimplemented_primitive_names_itself(primitive):
     document = cylinder()
@@ -444,15 +442,17 @@ def test_a_closed_loop_is_not_evaluated_yet():
         molejo.evaluate(document)
 
 
-def test_a_multi_primitive_path_is_not_evaluated_yet():
-    document = cylinder()
+def test_a_chained_path_spends_the_declared_segments_on_each_primitive():
+    # The cylinder's own convention read against a chain: two lines at 4
+    # segments each are 8 segments and 9 rings, and the joint ring is
+    # sampled once. `test_curved_paths.py` is where chains are pinned.
+    document = cylinder(path=4, profile=12)
     document["path"] = [
         {"type": "line", "to": [0.0, 0.0, 5.0]},
         {"type": "line", "to": [0.0, 0.0, 10.0]},
     ]
-    with pytest.raises(NotImplementedError) as caught:
-        molejo.evaluate(document)
-    assert "tessellation.path" in str(caught.value)
+    mesh = molejo.evaluate(document)
+    assert mesh.vertices.shape == (9 * 12 + 2, 3)
 
 
 # --- package surface --------------------------------------------------------
