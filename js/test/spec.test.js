@@ -139,6 +139,9 @@ test('a spec error is an error', () => {
   assert.ok(SpecError.prototype instanceof Error);
 });
 
-test('evaluation is not implemented yet', () => {
-  assert.throws(() => evaluate(spring(), { height: 46.8 }), /not implemented/);
+test('evaluating an unimplemented primitive names it', () => {
+  assert.throws(
+    () => evaluate(spring(), { height: 46.8 }),
+    (error) => /helix/.test(error.message) && /not implemented/.test(error.message),
+  );
 });

@@ -9,3 +9,5 @@
 
 import './spec.test.js';
 import './invalid-fixtures.test.js';
+import './evaluate.test.js';
+import './parity-fixtures.test.js';

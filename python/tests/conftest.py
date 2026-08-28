@@ -3,7 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Shared test helpers: the repository's fixture tree and the canonical
-spring document the README advertises."""
+spring document the README advertises.
+
+Fixture discovery is deliberately the same on both sides: the manifest
+names every parity fixture, both suites assert that the manifest and the
+directory agree, and both run everything the manifest names. A fixture
+added for one runtime cannot be quietly skipped by the other, because
+neither suite has a list of its own to fall behind."""
 
 import json
 from pathlib import Path
@@ -27,6 +33,27 @@ SPRING_DOCUMENT = {
     "loop": False,
     "tessellation": {"path": 240, "profile": 16},
 }
+
+
+#: The index of parity fixtures, and the one file in `fixtures/` that is
+#: not itself a fixture.
+MANIFEST = "manifest.json"
+
+
+def parity_manifest():
+    """The fixture file names the manifest says both suites must run."""
+    return json.loads((FIXTURES / MANIFEST).read_text(encoding="utf-8"))["parity"]
+
+
+def parity_files():
+    """The parity fixture files actually present in `fixtures/`."""
+    return sorted(
+        path.name for path in FIXTURES.glob("*.json") if path.name != MANIFEST
+    )
+
+
+def parity_fixture(filename):
+    return json.loads((FIXTURES / filename).read_text(encoding="utf-8"))
 
 
 def invalid_documents():
