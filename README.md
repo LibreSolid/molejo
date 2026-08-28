@@ -113,8 +113,25 @@ is checked through it on volume and area. An install without the extra
 imports and meshes and exports STL exactly as before; asking it for a
 solid raises naming the extra.
 
-Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
-is reserved for this project.
+Both packages build and install. `python/` produces a wheel and an sdist
+(`molejo`, numpy only, `molejo[brep]` for the kernel) and `js/` an npm
+tarball of plain ESM with no dependencies and no build step;
+`scripts/check-dist` is the release dry-run that proves it, installing
+each package into a throwaway environment outside this repository and
+evaluating the same cylinder fixture there, within the tolerance that
+fixture declares for that runtime.
+
+A package version carries the spec version it implements. Today both
+carry spec v1 at `0.0.1-dev` — `0.0.1.dev0` for Python and `0.0.1-dev.0`
+for npm, the two registries' spellings of one version — and the two
+packages release together for a given spec version. One document,
+two implementations: neither runtime is ever published against a spec
+version the other has not caught up to.
+
+Nothing is published. `molejo` on PyPI (`python/`) and npm (`js/`) is
+reserved for this project, and publishing to either is the maintainer's
+explicit decision, never a side effect of building: the dry-run packs,
+installs and checks, and uploads nothing.
 
 ## Origin
 
