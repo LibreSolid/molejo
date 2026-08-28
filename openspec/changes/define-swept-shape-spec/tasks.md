@@ -129,14 +129,21 @@
 
 ## 7. Distribution
 
-- [ ] 7.1 `python -m build` produces an installable wheel from
+- [x] 7.1 `python -m build` produces an installable wheel from
       `python/`; a clean-venv install (no extras) imports `molejo` and
-      evaluates the cylinder fixture.
-- [ ] 7.2 `npm pack` from `js/` produces an installable package; a
+      evaluates the cylinder fixture. `scripts/check-dist-python` is the
+      dry-run: it builds both artifacts, checks what they carry, and
+      installs the wheel and the sdist into throwaway venvs, smoking each
+      from a throwaway directory so no import can reach the checkout.
+- [x] 7.2 `npm pack` from `js/` produces an installable package; a
       scratch consumer imports it and evaluates the cylinder fixture.
-- [ ] 7.3 Version discipline recorded in README: package versions carry
-      the spec version they implement; publishing itself waits for the
-      pilot's explicit go.
+      `scripts/check-dist-js` is the dry-run, and `scripts/check-dist`
+      runs both halves — the two packages release together, so they are
+      checked together.
+- [x] 7.3 Version discipline recorded in README: package versions carry
+      the spec version they implement, the two packages release together
+      for a spec version, and publishing itself waits for the pilot's
+      explicit go. No script in this repository uploads anything.
 
 ## 8. Validation cases (consumer-side, evidence recorded here)
 

@@ -693,6 +693,45 @@ places exactness genuinely runs out are named rather than glossed.
   than the facets are. That is what "the B-rep is nearer truth" means as
   an assertion rather than a slogan.
 
+**What the two packages carry, and the npm build step there is not.**
+Settled at the distribution batch, which is the first evidence either
+question had:
+
+- **Plain ESM for `js/`, no build step for v1.** `js/src/*.js` is what
+  npm ships, byte for byte: three modules, no dependencies, no bundler,
+  no TypeScript, no generated artifact. The dry-run proves it rather
+  than assuming it — a scratch project installs the packed 19 kB tarball
+  and evaluates a parity fixture under bare `node` — so a package that
+  ever began to need compiling would fail there instead of at a
+  consumer. The reasoning: the consumer is a three.js application that
+  already owns a bundler and consumes ESM directly, and a build step
+  would insert a generated artifact between the source and the fixtures
+  that pin it to the Python side. TypeScript was the live alternative
+  and is deferred, not rejected: the vocabulary is a JSON document whose
+  refusals are runtime messages checked character for character against
+  Python's, so compile-time types would sit beside `parseSpec` rather
+  than replace it, and hand-written declarations can be added later
+  without a build. The question reopens when a consumer needs types or
+  the package needs to be something other than what its source already
+  is.
+- **The licence travels with each package, by the means each packer
+  understands.** `python/` symlinks `README.md`, `LICENSE` and `NOTICE`
+  to the repository root's — one package directory of a two-package
+  repository does not own the project's front page — and setuptools
+  dereferences them into real files in both the wheel and the sdist.
+  npm's packer silently skips symlinks, so `js/` carries real copies
+  instead, named in `package.json`'s `files` because npm auto-includes
+  `LICENSE` but not `NOTICE`; the dry-run diffs them against the root's
+  so a copy cannot drift unnoticed.
+- **Neither package ships the test suite or the fixtures.** The parity
+  fixtures are repository data at `fixtures/`, above both package
+  directories, and the suites read them from there. A wheel carrying
+  them would invite a consumer to depend on a path that is not part of
+  the package's promise; an sdist carrying half a suite that cannot find
+  them would ship a suite that cannot run. Both dry-runs assert their
+  absence, and both smoke tests are handed the fixture path from outside
+  precisely because the installed package has no copy to fall back on.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 
@@ -735,8 +774,6 @@ represents shapes it can define analytically.
   and a different curve through the same points. The loom's spans are
   comparable in length, so nothing chooses it early; a project with a
   run that bunches its waypoints decides.
-- npm build tooling for `js/` (plain ESM now; whether TypeScript and a
-  build step earn their place before first publish).
 - B-rep residuals, now that "The OCCT binding" above settles the
   binding, the trihedron law, the spline's B-form, the belt prism and
   the spiral ramp: a toothed belt of non-rectangular section, which the
