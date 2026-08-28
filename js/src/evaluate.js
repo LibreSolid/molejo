@@ -17,10 +17,13 @@
 //   * the path starts at the origin with tangent +Z, the profile drawn in
 //     world +X/+Y, transported rotation-minimizingly;
 //   * circle profile vertex j of M at angle 2*pi*j/M, cos*x + sin*y;
-//   * tessellation.path is a segment count N spent on each primitive, so a
-//     chain of k primitives has k*N + 1 rings and a joint's ring is
-//     sampled once, by the primitive that leaves it; wall vertex
-//     ring*M + j, then the start-cap centre, then the end-cap centre;
+//   * tessellation.path is a segment count N spent on each *element* of the
+//     path, a primitive's element count following the document alone (one
+//     for a line, arc or helix; one span per declared point for a spline;
+//     two per circle for a wrap), so a chain of k single-element
+//     primitives has k*N + 1 rings and a joint's ring is sampled once, by
+//     the primitive that leaves it; wall vertex ring*M + j, then the
+//     start-cap centre, then the end-cap centre;
 //   * faces run walls (ring-major, then j, two triangles a quad), then
 //     the start-cap fan, then the end-cap fan, wound outward throughout;
 //   * a closed loop drops the duplicate ring and both caps, so ring R-1's
@@ -300,14 +303,7 @@ function samplePath(path, values, segments) {
   for (let index = 0; index < path.length; index += 1) {
     const primitive = path[index];
     const loc = `path[${index}]`;
-    const sampler = SAMPLERS[primitive.type];
-    if (sampler === undefined) {
-      throw new NotImplementedError(
-        `${loc}: the '${primitive.type}' path primitive is not implemented yet; ` +
-          `this molejo build evaluates 'line', 'arc', 'helix' and 'wrap' only`,
-      );
-    }
-    const sampled = sampler(primitive, values, segments, frame, loc);
+    const sampled = SAMPLERS[primitive.type](primitive, values, segments, frame, loc);
     frame = sampled.frame;
     // The last ring of every primitive but the final one is the joint
     // ring, and belongs to the primitive that leaves it. A wrap returns
@@ -504,6 +500,158 @@ function sampleHelix(primitive, values, segments, startFrame, loc) {
 }
 
 /**
+ * A declared end tangent as a unit direction, or the fallback.
+ *
+ * What the author declares is where the curve points; the length is
+ * ignored, exactly as an arc's axis is, because the Hermite speed at an end
+ * comes from the adjacent chord -- the same scale the Catmull-Rom interior
+ * tangents carry.
+ */
+function splineDirection(declared, fallback, loc, what) {
+  if (declared === null) return fallback;
+  const length = norm(declared);
+  if (length <= 0.0) {
+    throw new EvaluationError(
+      `${loc}: a spline's ${what} tangent needs a direction; it has no length`,
+    );
+  }
+  return [declared[0] / length, declared[1] / length, declared[2] / length];
+}
+
+/**
+ * A cubic Hermite chain through the declared points, clamped at its ends.
+ *
+ * The spline begins where the path has reached, so `points` are what it
+ * runs through and toward: with that start P0 and the declared P1 … Pn it
+ * has n spans, each spent `segments` segments, and the ring at a joint
+ * belongs to the span that leaves it.
+ *
+ * The tangent it carries at each point is Catmull-Rom inside
+ * (`m_i = (P_{i+1} - P_{i-1})/2`) and declared at the two ends, scaled to
+ * the adjacent chord. An absent `start_tangent` means the incoming tangent
+ * -- so a lead-in hands over without a kink -- and an absent `end_tangent`
+ * means the final chord. Neither default is a value the document could
+ * have written, because both follow parameter values.
+ *
+ * Consecutive spans share the tangent vector at the point between them, so
+ * the curve is C1 across every interior point by construction rather than
+ * by the author's care.
+ */
+function sampleSpline(primitive, values, segments, startFrame, loc) {
+  const points = [startFrame.origin];
+  primitive.points.forEach((point, index) => {
+    points.push(resolveVector(point, values, `${loc}.points[${index}]`));
+  });
+  const spans = points.length - 1;
+
+  const declaredStart =
+    primitive.start_tangent === undefined
+      ? null
+      : resolveVector(primitive.start_tangent, values, `${loc}.start_tangent`);
+  const declaredEnd =
+    primitive.end_tangent === undefined
+      ? null
+      : resolveVector(primitive.end_tangent, values, `${loc}.end_tangent`);
+
+  const chords = [];
+  for (let index = 0; index < spans; index += 1) {
+    const here = points[index];
+    const there = points[index + 1];
+    const chord = norm([there[0] - here[0], there[1] - here[1], there[2] - here[2]]);
+    if (chord <= 0.0) {
+      throw new EvaluationError(
+        `${loc}.points[${index}]: a spline must go somewhere; points[${index}] ` +
+          `coincides with the point before it`,
+      );
+    }
+    chords.push(chord);
+  }
+
+  const tangentsAt = [];
+  const start = splineDirection(
+    declaredStart,
+    startFrame.tangent,
+    `${loc}.start_tangent`,
+    'start',
+  );
+  tangentsAt.push(start.map((axis) => chords[0] * axis));
+  for (let index = 1; index < spans; index += 1) {
+    const before = points[index - 1];
+    const after = points[index + 1];
+    const tangent = [
+      0.5 * (after[0] - before[0]),
+      0.5 * (after[1] - before[1]),
+      0.5 * (after[2] - before[2]),
+    ];
+    if (norm(tangent) <= 0.0) {
+      throw new EvaluationError(
+        `${loc}.points[${index - 1}]: a spline needs a direction where it turns; ` +
+          `the points on either side of points[${index - 1}] coincide`,
+      );
+    }
+    tangentsAt.push(tangent);
+  }
+  if (declaredEnd === null) {
+    const last = points[spans];
+    const before = points[spans - 1];
+    tangentsAt.push([last[0] - before[0], last[1] - before[1], last[2] - before[2]]);
+  } else {
+    const end = splineDirection(declaredEnd, null, `${loc}.end_tangent`, 'end');
+    tangentsAt.push(end.map((axis) => chords[spans - 1] * axis));
+  }
+
+  const centres = [];
+  const tangents = [];
+  for (let index = 0; index < spans; index += 1) {
+    // The last span alone contributes its final ring: a joint's ring
+    // belongs to the span that leaves it.
+    const rings = index === spans - 1 ? segments + 1 : segments;
+    const here = points[index];
+    const there = points[index + 1];
+    const leaving = tangentsAt[index];
+    const arriving = tangentsAt[index + 1];
+    for (let ring = 0; ring < rings; ring += 1) {
+      const t = ring / segments;
+      const square = t * t;
+      const cube = square * t;
+      // The Hermite basis is exactly (1, 0, 0, 0) at t = 0 and exactly
+      // (0, 0, 1, 0) at t = 1, so every declared point is hit bit for bit.
+      const h00 = 2.0 * cube - 3.0 * square + 1.0;
+      const h10 = cube - 2.0 * square + t;
+      const h01 = 3.0 * square - 2.0 * cube;
+      const h11 = cube - square;
+      const g00 = 6.0 * square - 6.0 * t;
+      const g10 = 3.0 * square - 4.0 * t + 1.0;
+      const g11 = 3.0 * square - 2.0 * t;
+      const centre = [];
+      const velocity = [];
+      for (let axis = 0; axis < 3; axis += 1) {
+        centre.push(
+          h00 * here[axis] + h10 * leaving[axis] + h01 * there[axis] + h11 * arriving[axis],
+        );
+        velocity.push(
+          g00 * (here[axis] - there[axis]) + g10 * leaving[axis] + g11 * arriving[axis],
+        );
+      }
+      const speed = norm(velocity);
+      if (speed <= 0.0) {
+        // A cusp the author asked for. Refused rather than divided by,
+        // because a NaN mesh is not the deterministic and visibly wrong a
+        // kinked joint is.
+        throw new EvaluationError(
+          `${loc}: a spline must be going somewhere at every ring; its tangent ` +
+            `vanishes on the span to points[${index}]`,
+        );
+      }
+      centres.push(centre);
+      tangents.push(velocity.map((axis) => axis / speed));
+    }
+  }
+
+  return { centres, ...carried(startFrame, centres, tangents) };
+}
+
+/**
  * The belt's own geometry: ring centres, tangents, and arc lengths.
  *
  * A wrap is planar -- it lies in the world XY plane, because its circles
@@ -694,13 +842,15 @@ function wrapDisplacement(primitive, values, segments, loc) {
 }
 
 /**
- * The path primitives this build evaluates. A primitive missing from here
- * is valid v1 vocabulary that throws naming itself.
+ * The whole v1 path vocabulary, each primitive with its sampler. There is
+ * no fallback here because there is nothing left to fall back from:
+ * validation refuses a primitive this table does not name.
  */
 const SAMPLERS = {
   line: sampleLine,
   arc: sampleArc,
   helix: sampleHelix,
+  spline: sampleSpline,
   wrap: sampleWrap,
 };
 

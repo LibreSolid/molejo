@@ -94,15 +94,16 @@ primitives (line, arc, helix, wrap, spline) — is defined, and both
 packages parse and validate the document against shared fixtures; the
 Python package also authors it (`Shape`, `Circle`, …, `P`).
 
-Circle and polygon profiles swept along `line`, `arc`, `helix` and
-`wrap` evaluate in both runtimes, singly or chained, capped or closed
-into a loop and watertight either way — from Python as numpy arrays and
-binary STL, from JavaScript as reusable three.js buffers, pinned to each
-other by shared parity fixtures. The spring in the sample above is one
-of those fixtures rather than a promise, and so is a toothed belt around
-three pulleys whose teeth circulate with a parameter. What remains
-raises naming itself: `spline`, and closing a loop that is not a wrap.
-See `openspec/changes/`.
+Circle and polygon profiles swept along the whole v1 path vocabulary —
+`line`, `arc`, `helix`, `spline` and `wrap` — evaluate in both runtimes,
+singly or chained, capped or closed into a loop and watertight either
+way, from Python as numpy arrays and binary STL, from JavaScript as
+reusable three.js buffers, pinned to each other by shared parity
+fixtures. The spring in the sample above is one of those fixtures rather
+than a promise, and so are a toothed belt around three pulleys whose
+teeth circulate with a parameter and a filament loom whose head follows
+three. What remains raises naming itself: closing a loop that is not a
+wrap. See `openspec/changes/`.
 
 Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
 is reserved for this project.

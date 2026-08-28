@@ -144,7 +144,10 @@ function checkVector(value, loc, dimension) {
 function checkPoints(value, loc, dimension, minimum, what) {
   if (!Array.isArray(value) || value.length < minimum) {
     const got = Array.isArray(value) ? String(value.length) : kindOf(value);
-    throw new SpecError(`${loc}: ${what} needs at least ${minimum} points, got ${got}`);
+    const noun = minimum === 1 ? 'point' : 'points';
+    throw new SpecError(
+      `${loc}: ${what} needs at least ${minimum} ${noun}, got ${got}`,
+    );
   }
   value.forEach((point, index) => checkVector(point, `${loc}[${index}]`, dimension));
 }
@@ -258,8 +261,17 @@ function checkPrimitive(primitive, loc) {
     checkSlot(primitive.turns, `${loc}.turns`);
     checkSlot(primitive.height, `${loc}.height`);
   } else if (kind === 'spline') {
-    checkFields(primitive, loc, ['type', 'points']);
-    checkPoints(primitive.points, `${loc}.points`, 3, 2, 'a spline');
+    checkFields(primitive, loc, ['type', 'points'], ['start_tangent', 'end_tangent']);
+    // A spline does not declare its start -- it begins where the path has
+    // reached -- so its points are what it runs through and toward, and
+    // one of them is a spline of a single span.
+    checkPoints(primitive.points, `${loc}.points`, 3, 1, 'a spline');
+    if (has(primitive, 'start_tangent')) {
+      checkVector(primitive.start_tangent, `${loc}.start_tangent`, 3);
+    }
+    if (has(primitive, 'end_tangent')) {
+      checkVector(primitive.end_tangent, `${loc}.end_tangent`, 3);
+    }
   } else if (kind === 'wrap') {
     checkFields(primitive, loc, ['type', 'around'], ['teeth', 'anchor', 'phase']);
     checkWrapCircles(primitive.around, `${loc}.around`);
