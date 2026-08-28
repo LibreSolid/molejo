@@ -38,6 +38,7 @@ except `manifest.json`, which is the index rather than a fixture:
   "description": "what this fixture exists to catch",
   "spec": { "molejo": 1, "…": "…" },
   "tolerance": { "python": 1e-12, "js": 1e-6 },
+  "brep": { "tolerance": 0.062 },
   "faces": [[0, 1, 13], "…"],
   "cases": [
     { "name": "short", "values": { "length": 12.0 },
@@ -70,6 +71,28 @@ fixtures use the observed departure is about one Float32 ulp, some 4% to
 whose frames are composed rotation by rotation: the composition tracks
 its float64 twin closely enough that single precision is still the whole
 of the difference.
+
+**`brep` is a property tolerance, and it is not a coordinate tolerance.**
+The B-rep evaluator produces a solid with no vertex contract — no rings to
+number, no faces to order — so its parity is the volume and the area of
+that solid against the volume and the area of the arrays stored here. The
+two are not meant to agree closely: a faceted mesh is inscribed in the
+smooth solid it samples, so a circle profile of *M* vertices encloses
+`(M/2π)·sin(2π/M)` of its circle — 4.5% short at *M* = 12 and 17% at
+*M* = 6 — and the path facets cut in from below as well. `brep.tolerance`
+is therefore a *relative* bound on both properties, per fixture, measured
+from that margin and given about 30% of headroom; the suite fails a
+fixture whose declared tolerance is more than twice its measured one, so
+headroom cannot quietly become licence. The gap is one-sided and asserted
+so: the exact solid is always the larger. And the same solid is checked
+against an independent closed form at 1e-6 — five orders tighter than any
+of these numbers — which is what makes the loose bound mean "nearer truth
+than the facets" rather than "close enough".
+
+Every parity fixture must declare one, and every parity fixture must have
+a closed form written out in the B-rep parity suite, or that suite fails
+naming the fixture. `tolerance` stays exactly the two runtimes' coordinate
+budgets, so the JavaScript suite never reads `brep` and never has to.
 
 **Expectations come from the Python evaluator**, but only after that
 evaluator has passed its own analytic assertions — watertightness, the

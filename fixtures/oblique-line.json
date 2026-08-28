@@ -26,6 +26,7 @@
     }
   },
   "tolerance": {"python": 1e-12, "js": 1e-06},
+  "brep": {"tolerance": 0.145},
   "faces": [
     [0, 1, 9],
     [0, 9, 8],
