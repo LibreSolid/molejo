@@ -22,11 +22,13 @@ place they live:
   carries a constant frame.
 * Circle profile vertex *j* of *M* sits at angle ``2*pi*j/M``, at
   ``cos*x + sin*y`` in the profile frame.
-* ``tessellation.path`` is a segment count *N* spent on *each* path
-  primitive: a chain of *k* primitives has ``k*N + 1`` rings, and the
-  ring at a joint is sampled once, by the primitive that leaves it. Wall
-  vertex ``ring*M + j``; then the start-cap centre, then the end-cap
-  centre.
+* ``tessellation.path`` is a segment count *N* spent on *each element* of
+  the path, and a primitive's element count follows the document alone
+  (one for a line, arc or helix; one span per declared point for a
+  spline; two per circle for a wrap). A chain of *k* single-element
+  primitives has ``k*N + 1`` rings, and the ring at a joint is sampled
+  once, by the primitive that leaves it. Wall vertex ``ring*M + j``; then
+  the start-cap centre, then the end-cap centre.
 * Faces run walls first (ring-major, then *j*, two triangles a quad),
   then the start-cap fan, then the end-cap fan. Winding is outward
   throughout: the start cap faces ``-tangent`` and the end cap
@@ -37,9 +39,11 @@ place they live:
   end frame, which transport does not bring back in general.
 
 What this build evaluates is a circle or polygon profile swept along a
-chain of ``line``, ``arc`` and ``helix`` primitives, or around a
-``wrap``. ``spline`` raises :class:`NotImplementedError` naming itself
-rather than guessing; the spline batch fills it in against fixtures.
+chain of ``line``, ``arc``, ``helix`` and ``spline`` primitives, or
+around a ``wrap`` -- the whole v1 path vocabulary. What still raises
+:class:`NotImplementedError` naming itself is ``loop: true`` on a chain
+that is not a wrap, which waits on an end frame that transport does not
+bring back in general.
 """
 
 import math
@@ -281,30 +285,26 @@ def _inner_face(points):
 
 
 def _sample_path(path, values, segments):
-    """The path as ``k * segments + 1`` frames, ``segments`` per primitive.
+    """The path as its ring centres ``(R, 3)`` and profile axes ``(R, 2, 3)``.
 
-    Returns the ring centres ``(R, 3)`` and their profile axes ``(R, 2, 3)``.
-
-    ``tessellation.path`` is spent on every primitive of the chain rather
+    ``tessellation.path`` is spent on every *element* of the path rather
     than divided among them: an arc-length-proportional split would make
     the ring count follow a parameter, which declared tessellation
-    forbids. A primitive begins where its predecessor ended -- no
-    primitive says where it starts -- so the ring at a joint is sampled
-    once, by the primitive that leaves it, and the frame carried across
-    is exactly the identity when the tangents agree.
+    forbids. A primitive's element count is a function of the document
+    alone -- one for a line, arc or helix, one per span for a spline of
+    that many declared points, two per circle for a wrap -- so a chain of
+    ``k`` single-element primitives is ``k * segments + 1`` rings.
+
+    A primitive begins where its predecessor ended -- no primitive says
+    where it starts -- so the ring at a joint is sampled once, by the
+    primitive that leaves it, and the frame carried across is exactly the
+    identity when the tangents agree.
     """
     frame = START_FRAME
     centres, axes = [], []
     for index, primitive in enumerate(path):
         loc = f"path[{index}]"
-        kind = primitive["type"]
-        sampler = _SAMPLERS.get(kind)
-        if sampler is None:
-            raise NotImplementedError(
-                f"{loc}: the '{kind}' path primitive is not implemented yet; this "
-                f"molejo build evaluates 'line', 'arc', 'helix' and 'wrap' only"
-            )
-        primitive_centres, primitive_axes, frame = sampler(
+        primitive_centres, primitive_axes, frame = _SAMPLERS[primitive["type"]](
             primitive, values, segments, frame, loc
         )
         # The last ring of every primitive but the final one is the joint
@@ -448,6 +448,128 @@ def _sample_helix(primitive, values, segments, frame, loc):
     tangents = (
         around * (-sine * frame.x + cosine * frame.y) + height * frame.tangent
     ) / speed
+    axes, frame = _carried(frame, centres, tangents)
+    return centres, axes, frame
+
+
+def _spline_direction(declared, fallback, loc, what):
+    """A declared end tangent as a unit direction, or the fallback.
+
+    What the author declares is where the curve points; the length is
+    ignored, exactly as an arc's axis is, because the Hermite speed at an
+    end comes from the adjacent chord -- the same scale the Catmull-Rom
+    interior tangents carry.
+    """
+    if declared is None:
+        return fallback
+    length = float(np.linalg.norm(declared))
+    if length <= 0.0:
+        raise EvaluationError(
+            f"{loc}: a spline's {what} tangent needs a direction; it has no length"
+        )
+    return declared / length
+
+
+def _sample_spline(primitive, values, segments, frame, loc):
+    """A cubic Hermite chain through the declared points, clamped at its ends.
+
+    The spline begins where the path has reached, so ``points`` are what
+    it runs through and toward: with that start *P0* and the declared
+    *P1 … Pn* it has *n* spans, each spent ``segments`` segments, and the
+    ring at a joint belongs to the span that leaves it.
+
+    The tangent it carries at each point is Catmull-Rom inside
+    (``m_i = (P_{i+1} - P_{i-1})/2``) and declared at the two ends, scaled
+    to the adjacent chord. An absent ``start_tangent`` means the incoming
+    tangent -- so a lead-in hands over without a kink -- and an absent
+    ``end_tangent`` means the final chord. Neither default is a value the
+    document could have written, because both follow parameter values.
+
+    Consecutive spans share the tangent vector at the point between them,
+    so the curve is C1 across every interior point by construction rather
+    than by the author's care.
+    """
+    points = np.empty((len(primitive["points"]) + 1, 3), dtype=np.float64)
+    points[0] = frame.origin
+    for index, point in enumerate(primitive["points"]):
+        points[index + 1] = _resolve_vector(point, values, f"{loc}.points[{index}]")
+    spans = len(points) - 1
+
+    declared_start = (
+        _resolve_vector(primitive["start_tangent"], values, f"{loc}.start_tangent")
+        if "start_tangent" in primitive
+        else None
+    )
+    declared_end = (
+        _resolve_vector(primitive["end_tangent"], values, f"{loc}.end_tangent")
+        if "end_tangent" in primitive
+        else None
+    )
+
+    chords = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    for index, chord in enumerate(chords):
+        if chord <= 0.0:
+            raise EvaluationError(
+                f"{loc}.points[{index}]: a spline must go somewhere; points[{index}] "
+                f"coincides with the point before it"
+            )
+
+    tangents_at = np.empty_like(points)
+    tangents_at[0] = chords[0] * _spline_direction(
+        declared_start, frame.tangent, f"{loc}.start_tangent", "start"
+    )
+    for index in range(1, spans):
+        tangents_at[index] = 0.5 * (points[index + 1] - points[index - 1])
+        if float(np.linalg.norm(tangents_at[index])) <= 0.0:
+            raise EvaluationError(
+                f"{loc}.points[{index - 1}]: a spline needs a direction where it "
+                f"turns; the points on either side of points[{index - 1}] coincide"
+            )
+    tangents_at[spans] = (
+        points[spans] - points[spans - 1]
+        if declared_end is None
+        else chords[spans - 1]
+        * _spline_direction(declared_end, None, f"{loc}.end_tangent", "end")
+    )
+
+    centres = np.empty((spans * segments + 1, 3), dtype=np.float64)
+    tangents = np.empty_like(centres)
+    at = 0
+    for index in range(spans):
+        # The last span alone contributes its final ring: a joint's ring
+        # belongs to the span that leaves it.
+        rings = segments + 1 if index == spans - 1 else segments
+        step = np.arange(rings, dtype=np.float64) / segments
+        square = step * step
+        cube = square * step
+        here, there = points[index], points[index + 1]
+        leaving, arriving = tangents_at[index], tangents_at[index + 1]
+
+        # The Hermite basis is exactly (1, 0, 0, 0) at t = 0 and exactly
+        # (0, 0, 1, 0) at t = 1, so every declared point is hit bit for bit.
+        centres[at : at + rings] = (
+            (2.0 * cube - 3.0 * square + 1.0)[:, None] * here
+            + (cube - 2.0 * square + step)[:, None] * leaving
+            + (3.0 * square - 2.0 * cube)[:, None] * there
+            + (cube - square)[:, None] * arriving
+        )
+        velocity = (
+            (6.0 * square - 6.0 * step)[:, None] * (here - there)
+            + (3.0 * square - 4.0 * step + 1.0)[:, None] * leaving
+            + (3.0 * square - 2.0 * step)[:, None] * arriving
+        )
+        speed = np.linalg.norm(velocity, axis=1)
+        if not speed.all():
+            # A cusp the author asked for. Refused rather than divided by,
+            # because a NaN mesh is not the deterministic and visibly wrong
+            # a kinked joint is.
+            raise EvaluationError(
+                f"{loc}: a spline must be going somewhere at every ring; its tangent "
+                f"vanishes on the span to points[{index}]"
+            )
+        tangents[at : at + rings] = velocity / speed[:, None]
+        at += rings
+
     axes, frame = _carried(frame, centres, tangents)
     return centres, axes, frame
 
@@ -622,12 +744,14 @@ def _wrap_displacement(primitive, values, segments, loc):
     return height * np.clip((0.375 - distance) * 4.0, 0.0, 1.0)
 
 
-#: The path primitives this build evaluates. A primitive missing from here
-#: is valid v1 vocabulary that raises naming itself.
+#: The whole v1 path vocabulary, each primitive with its sampler. There is
+#: no fallback here because there is nothing left to fall back from:
+#: validation refuses a primitive this table does not name.
 _SAMPLERS = {
     "line": _sample_line,
     "arc": _sample_arc,
     "helix": _sample_helix,
+    "spline": _sample_spline,
     "wrap": _sample_wrap,
 }
 

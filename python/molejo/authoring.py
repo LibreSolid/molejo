@@ -252,15 +252,30 @@ class Helix(_Element):
 
 
 class Spline(_Element):
-    """A spline through at least two (x, y, z) points."""
+    """A spline through the (x, y, z) points it runs toward.
 
-    __slots__ = ("points",)
+    Like every primitive but a wrap it does not declare where it starts:
+    it begins at the point the path has reached, and ``points`` are what
+    it runs through and toward. ``start_tangent`` and ``end_tangent`` are
+    *directions* -- their length is ignored -- and leaving one out means
+    the thing no literal could state: leave the way you came, arrive
+    along the final chord.
+    """
 
-    def __init__(self, points):
+    __slots__ = ("points", "start_tangent", "end_tangent")
+
+    def __init__(self, points, start_tangent=None, end_tangent=None):
         self.points = list(points)
+        self.start_tangent = start_tangent
+        self.end_tangent = end_tangent
 
     def to_dict(self):
-        return {"type": "spline", "points": [_emit(point) for point in self.points]}
+        document = {"type": "spline", "points": [_emit(point) for point in self.points]}
+        if self.start_tangent is not None:
+            document["start_tangent"] = _emit(self.start_tangent)
+        if self.end_tangent is not None:
+            document["end_tangent"] = _emit(self.end_tangent)
+        return document
 
 
 class Teeth(_Element):
@@ -330,7 +345,13 @@ _PRIMITIVES = {
     "helix": lambda fields: Helix(
         radius=fields["radius"], turns=fields["turns"], height=fields["height"]
     ),
-    "spline": lambda fields: Spline(points=[tuple(point) for point in fields["points"]]),
+    "spline": lambda fields: Spline(
+        points=[tuple(point) for point in fields["points"]],
+        start_tangent=(
+            tuple(fields["start_tangent"]) if "start_tangent" in fields else None
+        ),
+        end_tangent=tuple(fields["end_tangent"]) if "end_tangent" in fields else None,
+    ),
     "wrap": lambda fields: Wrap(
         around=[
             {"center": tuple(circle["center"]), "radius": circle["radius"]}

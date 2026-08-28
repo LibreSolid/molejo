@@ -177,7 +177,8 @@ def _check_vector(value, loc, dimension):
 def _check_points(value, loc, dimension, minimum, what):
     if not isinstance(value, list) or len(value) < minimum:
         got = str(len(value)) if isinstance(value, list) else _kind(value)
-        raise SpecError(f"{loc}: {what} needs at least {minimum} points, got {got}")
+        noun = "point" if minimum == 1 else "points"
+        raise SpecError(f"{loc}: {what} needs at least {minimum} {noun}, got {got}")
     for index, point in enumerate(value):
         _check_vector(point, f"{loc}[{index}]", dimension)
 
@@ -286,8 +287,17 @@ def _check_primitive(primitive, loc):
         _check_slot(primitive["turns"], f"{loc}.turns")
         _check_slot(primitive["height"], f"{loc}.height")
     elif kind == "spline":
-        _check_fields(primitive, loc, ("type", "points"))
-        _check_points(primitive["points"], f"{loc}.points", 3, 2, "a spline")
+        _check_fields(
+            primitive, loc, ("type", "points"), optional=("start_tangent", "end_tangent")
+        )
+        # A spline does not declare its start -- it begins where the path
+        # has reached -- so its points are what it runs through and toward,
+        # and one of them is a spline of a single span.
+        _check_points(primitive["points"], f"{loc}.points", 3, 1, "a spline")
+        if "start_tangent" in primitive:
+            _check_vector(primitive["start_tangent"], f"{loc}.start_tangent", 3)
+        if "end_tangent" in primitive:
+            _check_vector(primitive["end_tangent"], f"{loc}.end_tangent", 3)
     elif kind == "wrap":
         _check_fields(
             primitive, loc, ("type", "around"), optional=("teeth", "anchor", "phase")
