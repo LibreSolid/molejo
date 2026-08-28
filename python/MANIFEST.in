@@ -1,0 +1,5 @@
+# The test suite is a repository asset, not a source-distribution one: it
+# reads the shared parity fixtures at `fixtures/`, one level above this
+# package directory and outside anything an sdist may contain. Shipping it
+# would ship a suite that cannot run. Clone the repository to run the tests.
+prune tests
