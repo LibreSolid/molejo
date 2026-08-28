@@ -15,7 +15,9 @@
     "test": "node --test test/"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE",
+    "NOTICE"
   ],
   "keywords": [
     "cad",
