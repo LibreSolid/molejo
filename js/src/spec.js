@@ -184,7 +184,16 @@ export function validate(document) {
     throw new SpecError(`loop: must be a boolean, got ${kindOf(document.loop)}`);
   }
 
+  // A wrap is a closed loop by construction, so a document carrying one
+  // must say so: no document may misdescribe the topology it has.
+  if (document.path[0].type === 'wrap' && document.loop !== true) {
+    throw new SpecError(
+      'loop: a wrap is a closed loop, so its document must declare "loop": true',
+    );
+  }
+
   checkTessellation(document.tessellation, 'tessellation');
+  checkProfileSamples(document.profile, document.tessellation, 'tessellation');
 }
 
 function checkProfile(profile, loc) {
@@ -213,6 +222,19 @@ function checkPath(path, loc) {
     throw new SpecError(`${loc}: must be an array of at least 1 primitive, got ${got}`);
   }
   path.forEach((primitive, index) => checkPrimitive(primitive, `${loc}[${index}]`));
+  // A wrap declares where it starts, in world coordinates; every other
+  // primitive continues from where the previous one ended. A path that
+  // mixed them would have two starts.
+  if (path.length > 1) {
+    path.forEach((primitive, index) => {
+      if (primitive.type === 'wrap') {
+        throw new SpecError(
+          `${loc}[${index}]: a wrap defines its own start, so it must be the ` +
+            `only primitive in its path`,
+        );
+      }
+    });
+  }
 }
 
 function checkPrimitive(primitive, loc) {
@@ -242,8 +264,18 @@ function checkPrimitive(primitive, loc) {
     checkFields(primitive, loc, ['type', 'around'], ['teeth', 'anchor', 'phase']);
     checkWrapCircles(primitive.around, `${loc}.around`);
     if (has(primitive, 'teeth')) checkTeeth(primitive.teeth, `${loc}.teeth`);
-    if (has(primitive, 'anchor')) checkAnchor(primitive.anchor, `${loc}.anchor`);
+    if (has(primitive, 'anchor')) {
+      checkAnchor(primitive.anchor, `${loc}.anchor`, primitive.around.length);
+    }
     if (has(primitive, 'phase')) checkSlot(primitive.phase, `${loc}.phase`);
+    // Both name the same thing -- where the tooth pattern's material
+    // origin sits -- so a document carrying the two says it twice.
+    if (has(primitive, 'anchor') && has(primitive, 'phase')) {
+      throw new SpecError(
+        `${loc}: a wrap takes an 'anchor' or a 'phase', not both; they name ` +
+          `the same tooth-pattern origin`,
+      );
+    }
   } else {
     throw new SpecError(
       `${loc}: unknown path primitive ${quote(kind)}; expected one of ` +
@@ -281,10 +313,18 @@ function checkTeeth(teeth, loc) {
   checkCount(teeth.count, `${loc}.count`);
 }
 
-function checkAnchor(anchor, loc) {
+function checkAnchor(anchor, loc, circles) {
   checkObject(anchor, loc);
   checkFields(anchor, loc, ['span', 'at']);
+  // The span index picks one of the wrap's tangent spans, and a wrap
+  // around k circles has exactly k of them.
   checkCount(anchor.span, `${loc}.span`, 0);
+  if (anchor.span >= circles) {
+    throw new SpecError(
+      `${loc}.span: a wrap around ${circles} circles has ${circles} spans, so ` +
+        `'span' must be less than ${circles}, got ${render(anchor.span)}`,
+    );
+  }
   checkSlot(anchor.at, `${loc}.at`);
 }
 
@@ -295,6 +335,23 @@ function checkTessellation(tessellation, loc) {
   // is what makes vertex correspondence across evaluations free.
   checkCount(tessellation.path, `${loc}.path`);
   checkCount(tessellation.profile, `${loc}.profile`);
+}
+
+/**
+ * A polygon is sampled at its own points, no more and no fewer.
+ *
+ * Its point count already fixes its vertex count, so any other reading
+ * would make the declared count a lie and `V = R*M` false.
+ */
+function checkProfileSamples(profile, tessellation, loc) {
+  if (profile.type !== 'polygon') return;
+  const points = profile.points.length;
+  if (tessellation.profile !== points) {
+    throw new SpecError(
+      `${loc}.profile: a polygon profile is sampled at its own points, so ` +
+        `'profile' must be ${points}, got ${render(tessellation.profile)}`,
+    );
+  }
 }
 
 // --- parsing -----------------------------------------------------------

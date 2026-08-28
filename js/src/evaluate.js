@@ -22,7 +22,10 @@
 //     sampled once, by the primitive that leaves it; wall vertex
 //     ring*M + j, then the start-cap centre, then the end-cap centre;
 //   * faces run walls (ring-major, then j, two triangles a quad), then
-//     the start-cap fan, then the end-cap fan, wound outward throughout.
+//     the start-cap fan, then the end-cap fan, wound outward throughout;
+//   * a closed loop drops the duplicate ring and both caps, so ring R-1's
+//     quads wrap onto ring 0 and V = R*M, F = 2*R*M. Only a `wrap` path
+//     is a loop today.
 //
 // Because the counts are declared and never adaptive, the index is a
 // function of the document alone. That is what makes the per-frame path
@@ -33,6 +36,8 @@ import { kindOf, parseSpec } from './spec.js';
 
 /** Below this the cross product of two unit vectors is noise, not an axis. */
 const PARALLEL = 1e-12;
+
+const TAU = 2.0 * Math.PI;
 
 /**
  * A spec cannot be evaluated at the given parameter values.
@@ -209,14 +214,8 @@ export function transport(frame, tangent, origin) {
 
 // --- profiles -----------------------------------------------------------
 
-/** The profile as `count` [u, v] coordinates in the profile frame. */
-function profilePoints(profile, values, count) {
-  if (profile.type !== 'circle') {
-    throw new NotImplementedError(
-      `profile: the '${profile.type}' profile is not implemented yet; this ` +
-        `molejo build evaluates 'circle' only`,
-    );
-  }
+/** Vertex j of M at angle `2*pi*j/M`, at `cos*x + sin*y`. */
+function circlePoints(profile, values, count) {
   const radius = resolve(profile.radius, values, 'profile.radius');
   if (radius <= 0.0) {
     throw new EvaluationError(
@@ -229,6 +228,55 @@ function profilePoints(profile, values, count) {
     points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
   }
   return points;
+}
+
+/**
+ * The declared points, in order; the count is theirs, checked already.
+ *
+ * A polygon's coordinates are ordinary numeric slots, so a profile may be
+ * driven by parameters like anything else. Their order is the author's:
+ * counter-clockwise in the profile frame, as the circle's is, or the sweep
+ * winds inward.
+ */
+function polygonPoints(profile, values) {
+  return profile.points.map((point, index) =>
+    resolveVector(point, values, `profile.points[${index}]`),
+  );
+}
+
+/**
+ * The profiles this build evaluates. One missing from here is valid v1
+ * vocabulary that throws naming itself.
+ */
+const PROFILES = {
+  circle: circlePoints,
+  polygon: polygonPoints,
+};
+
+/** The profile as `count` [u, v] coordinates in the profile frame. */
+function profilePoints(profile, values, count) {
+  const sampler = PROFILES[profile.type];
+  if (sampler === undefined) {
+    throw new NotImplementedError(
+      `profile: the '${profile.type}' profile is not implemented yet; this ` +
+        `molejo build evaluates 'circle' and 'polygon' only`,
+    );
+  }
+  return sampler(profile, values, count);
+}
+
+/**
+ * Which profile vertices the teeth displace: those at the minimum x.
+ *
+ * Exact equality, not a tolerance: a section whose inner face is flat --
+ * every belt's is -- has two or more vertices there, and one whose inner
+ * face is rounded displaces a single vertex into a spike, which is
+ * authorship rather than something molejo guesses at.
+ */
+function innerFace(points) {
+  let least = points[0][0];
+  for (const point of points) least = Math.min(least, point[0]);
+  return points.map((point) => point[0] === least);
 }
 
 // --- paths --------------------------------------------------------------
@@ -256,14 +304,17 @@ function samplePath(path, values, segments) {
     if (sampler === undefined) {
       throw new NotImplementedError(
         `${loc}: the '${primitive.type}' path primitive is not implemented yet; ` +
-          `this molejo build evaluates 'line', 'arc' and 'helix' only`,
+          `this molejo build evaluates 'line', 'arc', 'helix' and 'wrap' only`,
       );
     }
     const sampled = sampler(primitive, values, segments, frame, loc);
     frame = sampled.frame;
     // The last ring of every primitive but the final one is the joint
-    // ring, and belongs to the primitive that leaves it.
-    const rings = index === path.length - 1 ? segments + 1 : segments;
+    // ring, and belongs to the primitive that leaves it. A wrap returns
+    // the rings of a closed loop, whose last ring is ring 0 itself, so
+    // the count comes from the sampler rather than from `segments`.
+    const rings =
+      index === path.length - 1 ? sampled.centres.length : sampled.centres.length - 1;
     for (let ring = 0; ring < rings; ring += 1) {
       centres.push(sampled.centres[ring]);
       axes.push(sampled.axes[ring]);
@@ -453,6 +504,196 @@ function sampleHelix(primitive, values, segments, startFrame, loc) {
 }
 
 /**
+ * The belt's own geometry: ring centres, tangents, and arc lengths.
+ *
+ * A wrap is planar -- it lies in the world XY plane, because its circles
+ * are declared there -- and it runs the external tangents, clockwise seen
+ * from +Z, touching every circle along its outward normal. For consecutive
+ * circles at distance L with radii r and r':
+ *
+ *     n = delta*chat + sqrt(1 - delta^2)*rot90(chat),  delta = (r - r')/L
+ *
+ * and the direction of travel is `(n_y, -n_x)`. The elements of the loop
+ * are span 0, the arc about circle 1, span 1, … and finally the arc about
+ * circle 0, each spent `segments` rings; the loop's origin is where the
+ * belt leaves circle 0.
+ */
+function wrapGeometry(primitive, values, segments, loc) {
+  const circles = primitive.around;
+  const count = circles.length;
+
+  const centres = [];
+  const radii = [];
+  for (let index = 0; index < count; index += 1) {
+    centres.push(
+      resolveVector(circles[index].center, values, `${loc}.around[${index}].center`),
+    );
+    const radius = resolve(
+      circles[index].radius,
+      values,
+      `${loc}.around[${index}].radius`,
+    );
+    if (radius <= 0.0) {
+      throw new EvaluationError(
+        `${loc}.around[${index}].radius: must be a positive number, got ` +
+          `${describe(radius)}`,
+      );
+    }
+    radii.push(radius);
+  }
+
+  const normals = [];
+  for (let index = 0; index < count; index += 1) {
+    const following = (index + 1) % count;
+    const span = [
+      centres[following][0] - centres[index][0],
+      centres[following][1] - centres[index][1],
+    ];
+    const length = Math.sqrt(span[0] * span[0] + span[1] * span[1]);
+    const gap = radii[index] - radii[following];
+    if (length <= Math.abs(gap)) {
+      throw new EvaluationError(
+        `${loc}.around[${following}]: a wrap needs an external tangent between ` +
+          `consecutive circles; around[${index}] and around[${following}] are too ` +
+          `close for one`,
+      );
+    }
+    const direction = [span[0] / length, span[1] / length];
+    const delta = gap / length;
+    const sideways = Math.sqrt(1.0 - delta * delta);
+    normals.push([
+      delta * direction[0] + sideways * -direction[1],
+      delta * direction[1] + sideways * direction[0],
+    ]);
+  }
+
+  const ringCentres = [];
+  const tangents = [];
+  const stations = [];
+  const spanStarts = [];
+  let travelled = 0.0;
+  for (let index = 0; index < count; index += 1) {
+    const following = (index + 1) % count;
+    const normal = normals[index];
+
+    // The tangent span, from circle `index` to circle `following`.
+    const start = [
+      centres[index][0] + radii[index] * normal[0],
+      centres[index][1] + radii[index] * normal[1],
+    ];
+    const end = [
+      centres[following][0] + radii[following] * normal[0],
+      centres[following][1] + radii[following] * normal[1],
+    ];
+    const reach = [end[0] - start[0], end[1] - start[1]];
+    const length = Math.sqrt(reach[0] * reach[0] + reach[1] * reach[1]);
+    spanStarts.push(travelled);
+    for (let ring = 0; ring < segments; ring += 1) {
+      const step = ring / segments;
+      ringCentres.push([start[0] + step * reach[0], start[1] + step * reach[1], 0.0]);
+      tangents.push([normal[1], -normal[0], 0.0]);
+      stations.push(travelled + step * length);
+    }
+    travelled += length;
+
+    // The arc about circle `following`, clockwise from the normal the
+    // belt arrives on to the one it leaves on.
+    const arrival = Math.atan2(normal[1], normal[0]);
+    const departure = Math.atan2(normals[following][1], normals[following][0]);
+    const turn = (((arrival - departure) % TAU) + TAU) % TAU;
+    const radius = radii[following];
+    for (let ring = 0; ring < segments; ring += 1) {
+      const step = ring / segments;
+      const angle = arrival - turn * step;
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      ringCentres.push([
+        centres[following][0] + radius * cosine,
+        centres[following][1] + radius * sine,
+        0.0,
+      ]);
+      tangents.push([sine, -cosine, 0.0]);
+      stations.push(travelled + step * (radius * turn));
+    }
+    travelled += radius * turn;
+  }
+
+  return { centres: ringCentres, tangents, stations, length: travelled, spanStarts };
+}
+
+/**
+ * A belt around ordered circles, as a closed planar loop.
+ *
+ * The one primitive that says where it is, so it starts in a frame of its
+ * own rather than the one it is handed -- which is why validation keeps it
+ * alone in its path. Local x is the outward normal and local y is world
+ * +Z, and the belt circulates clockwise seen from +Z so that triple is
+ * right-handed and the pinned outward winding needs no special case.
+ * Transport is then the ordinary ring-by-ring one: the path is planar, so
+ * every minimal rotation is about +/-Z and the frame comes back to the
+ * start frame at the seam.
+ */
+function sampleWrap(primitive, values, segments, startFrame, loc) {
+  const wrap = wrapGeometry(primitive, values, segments, loc);
+  const tangent = wrap.tangents[0];
+  const start = {
+    origin: wrap.centres[0],
+    x: [-tangent[1], tangent[0], 0.0],
+    y: [0.0, 0.0, 1.0],
+    tangent,
+  };
+  return { centres: wrap.centres, ...carried(start, wrap.centres, wrap.tangents) };
+}
+
+/**
+ * How far each ring's inner face is pushed toward the circles.
+ *
+ * Teeth are a periodic trapezoid in arc length whose period is the loop's
+ * length over the declared count: an integer count over the whole loop is
+ * what closes the pattern at the seam, and what keeps a moving idler
+ * changing the tooth pitch *length* rather than the tooth count. One
+ * period is a quarter crest centred on the pattern origin, a quarter ramp,
+ * a quarter root and a quarter ramp back. The declared `teeth.pitch` is
+ * the nominal pitch of the belt standard and is not read here (see
+ * design.md, "The wrap").
+ *
+ * The origin is `anchor` (a distance along a named tangent span, so a belt
+ * clamped to a carriage keeps its teeth meshed as the carriage runs), or
+ * `phase` (belt travel from the wrap's own origin), or the wrap's own
+ * origin when the document names neither.
+ */
+function wrapDisplacement(primitive, values, segments, loc) {
+  const teeth = primitive.teeth;
+  const anchor = primitive.anchor;
+  if (teeth === undefined && anchor === undefined && primitive.phase === undefined) {
+    return null;
+  }
+
+  const wrap = wrapGeometry(primitive, values, segments, loc);
+  let origin = 0.0;
+  if (anchor !== undefined) {
+    origin = wrap.spanStarts[anchor.span] + resolve(anchor.at, values, `${loc}.anchor.at`);
+  } else if (primitive.phase !== undefined) {
+    origin = resolve(primitive.phase, values, `${loc}.phase`);
+  }
+
+  if (teeth === undefined) return null;
+  const height = resolve(teeth.height, values, `${loc}.teeth.height`);
+  if (height < 0.0) {
+    throw new EvaluationError(
+      `${loc}.teeth.height: must be a non-negative number, got ${describe(height)}`,
+    );
+  }
+
+  const period = wrap.length / teeth.count;
+  return wrap.stations.map((station) => {
+    const fraction = ((((station - origin) / period) % 1.0) + 1.0) % 1.0;
+    const distance = Math.min(fraction, 1.0 - fraction);
+    return height * Math.min(1.0, Math.max(0.0, (0.375 - distance) * 4.0));
+  });
+}
+
+/**
  * The path primitives this build evaluates. A primitive missing from here
  * is valid v1 vocabulary that throws naming itself.
  */
@@ -460,20 +701,25 @@ const SAMPLERS = {
   line: sampleLine,
   arc: sampleArc,
   helix: sampleHelix,
+  wrap: sampleWrap,
 };
 
 // --- buffers ------------------------------------------------------------
 
-function writeIndex(index, rings, count) {
+function writeIndex(index, rings, count, loop) {
   let at = 0;
-  // Walls, ring-major then j, two triangles a quad.
-  for (let ring = 0; ring < rings - 1; ring += 1) {
+  // Walls, ring-major then j, two triangles a quad. A loop has one more
+  // band than an open sweep: its last ring's quads wrap onto ring 0,
+  // which is what closes the belt without a duplicate ring.
+  const bands = loop ? rings : rings - 1;
+  for (let ring = 0; ring < bands; ring += 1) {
+    const onward = ((ring + 1) % rings) * count;
     for (let j = 0; j < count; j += 1) {
       const following = (j + 1) % count;
       const a = ring * count + j;
       const b = ring * count + following;
-      const c = b + count;
-      const d = a + count;
+      const c = onward + following;
+      const d = onward + j;
       index[at] = a;
       index[at + 1] = b;
       index[at + 2] = c;
@@ -483,6 +729,9 @@ function writeIndex(index, rings, count) {
       at += 6;
     }
   }
+
+  // No open end, so nothing to cap: the walls already close.
+  if (loop) return;
 
   const startCentre = rings * count;
   const endCentre = startCentre + 1;
@@ -541,10 +790,14 @@ function checkBuffer(buffers, name, Kind, length) {
 export function evaluate(spec, values, buffers) {
   const document = parseSpec(spec);
 
-  if (document.loop) {
+  // A wrap is a closed loop and validation has already made its document
+  // say so; closing a chain of other primitives waits on the end frame,
+  // which a rotation-minimizing transport does not bring back in general.
+  const loop = document.path[0].type === 'wrap';
+  if (document.loop && !loop) {
     throw new NotImplementedError(
-      'loop: closed-loop paths are not implemented yet; this molejo build ' +
-        'evaluates open paths only',
+      'loop: closing a chain of primitives is not implemented yet; this molejo ' +
+        "build closes the loop of a 'wrap' path only",
     );
   }
 
@@ -555,10 +808,16 @@ export function evaluate(spec, values, buffers) {
   // written, which is what makes "no partial output" true rather than hoped.
   const points = profilePoints(document.profile, values, count);
   const { centres, axes } = samplePath(document.path, values, segments);
+  const displacement = loop
+    ? wrapDisplacement(document.path[0], values, segments, 'path[0]')
+    : null;
+  const inner = displacement === null ? null : innerFace(points);
 
   const rings = centres.length;
-  const vertexCount = rings * count + 2;
-  const triangleCount = 2 * (rings - 1) * count + 2 * count;
+  const vertexCount = loop ? rings * count : rings * count + 2;
+  const triangleCount = loop
+    ? 2 * rings * count
+    : 2 * (rings - 1) * count + 2 * count;
 
   let target = buffers;
   if (target === undefined || target === null) {
@@ -568,7 +827,7 @@ export function evaluate(spec, values, buffers) {
       vertexCount,
       triangleCount,
     };
-    writeIndex(target.index, rings, count);
+    writeIndex(target.index, rings, count, loop);
   } else {
     checkBuffer(target, 'positions', Float32Array, vertexCount * 3);
     checkBuffer(target, 'index', Uint32Array, triangleCount * 3);
@@ -580,18 +839,24 @@ export function evaluate(spec, values, buffers) {
     const centre = centres[ring];
     const [x, y] = axes[ring];
     for (let j = 0; j < count; j += 1) {
-      const [u, v] = points[j];
+      const [across, v] = points[j];
+      // A tooth pushes the profile's inner face toward the negative
+      // local x and leaves every other vertex where it is.
+      const u =
+        displacement !== null && inner[j] ? across - displacement[ring] : across;
       positions[at] = centre[0] + u * x[0] + v * y[0];
       positions[at + 1] = centre[1] + u * x[1] + v * y[1];
       positions[at + 2] = centre[2] + u * x[2] + v * y[2];
       at += 3;
     }
   }
-  for (const centre of [centres[0], centres[rings - 1]]) {
-    positions[at] = centre[0];
-    positions[at + 1] = centre[1];
-    positions[at + 2] = centre[2];
-    at += 3;
+  if (!loop) {
+    for (const centre of [centres[0], centres[rings - 1]]) {
+      positions[at] = centre[0];
+      positions[at + 1] = centre[1];
+      positions[at + 2] = centre[2];
+      at += 3;
+    }
   }
 
   return target;

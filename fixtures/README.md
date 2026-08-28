@@ -65,8 +65,8 @@ against the stored JSON, which round-trips exactly, and its tolerance is
 headroom for a platform's libm rather than for its own arithmetic.
 JavaScript writes `Float32Array` positions, so its tolerance must absorb
 single precision and is always the looser of the two; at the sizes these
-fixtures use the observed departure is about one Float32 ulp, some 4% of
-the declared budget. That holds for the curved and chained paths too,
+fixtures use the observed departure is about one Float32 ulp, some 4% to
+6% of the declared budget. That holds for the curved and chained paths too,
 whose frames are composed rotation by rotation: the composition tracks
 its float64 twin closely enough that single precision is still the whole
 of the difference.
