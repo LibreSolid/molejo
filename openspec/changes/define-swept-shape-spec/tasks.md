@@ -40,13 +40,13 @@
 
 ## 3. Arc and helix
 
-- [ ] 3.1 Red: arc path fixture (quarter-bend tube) — counts, ordering,
+- [x] 3.1 Red: arc path fixture (quarter-bend tube) — counts, ordering,
       endpoint frames continuous with adjoining line segments.
-- [ ] 3.2 Implement `arc` in Python, then JS, to fixture parity.
-- [ ] 3.3 Red: helix fixture — a spring at two pitches bound via
+- [x] 3.2 Implement `arc` in Python, then JS, to fixture parity.
+- [x] 3.3 Red: helix fixture — a spring at two pitches bound via
       `{"param": "pitch"}`; wire cross-section stays circular (no axial
       shear of the profile), coil count fixed.
-- [ ] 3.4 Implement `helix` in Python, then JS, to fixture parity.
+- [x] 3.4 Implement `helix` in Python, then JS, to fixture parity.
 
 ## 4. Wrap and spline
 

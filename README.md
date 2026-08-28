@@ -94,13 +94,12 @@ primitives (line, arc, helix, wrap, spline) — is defined, and both
 packages parse and validate the document against shared fixtures; the
 Python package also authors it (`Shape`, `Circle`, …, `P`).
 
-The first sweep evaluates in both runtimes: a circle profile along a
-line, capped and watertight, from Python as numpy arrays and binary STL
-and from JavaScript as reusable three.js buffers, pinned to each other
-by shared parity fixtures. Everything else in the vocabulary raises
-naming itself — arc, helix, wrap, spline, polygon profiles, closed
-loops, and paths of more than one primitive — so the spring in the
-sample above is still the target rather than a promise. See
+Sweeps along `line`, `arc` and `helix` evaluate in both runtimes, singly
+or chained, capped and watertight — from Python as numpy arrays and
+binary STL, from JavaScript as reusable three.js buffers, pinned to each
+other by shared parity fixtures. The spring in the sample above is one
+of those fixtures rather than a promise. What remains raises naming
+itself: `wrap`, `spline`, polygon profiles, and closed loops. See
 `openspec/changes/`.
 
 Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
