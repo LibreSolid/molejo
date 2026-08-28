@@ -7,20 +7,24 @@
 A molejo shape is a serializable spec -- a planar profile swept along a
 parametric path whose numeric slots may reference named scalar
 parameters. This package is the Python side: the authoring layer that
-writes the spec, and (soon) the evaluator that turns spec plus parameter
-values into a deterministic triangle mesh.
+writes the spec, and the evaluator that turns spec plus parameter values
+into a deterministic triangle mesh.
 
-    from molejo import Shape, Circle, Helix, P
+    from molejo import Shape, Circle, Line, P
 
-    spring = Shape(
+    tube = Shape(
         profile=Circle(radius=2.0),
-        path=[Helix(radius=14.0, turns=6.5, height=P.height)],
-        path_samples=240, profile_samples=16,
+        path=[Line(to=(0.0, 0.0, P.length))],
+        path_samples=8, profile_samples=32,
     )
-    spring.to_json()          # the spec -- what a browser gets
+    tube.to_json()            # the spec -- what a browser gets
+    mesh = tube.evaluate(length=46.8)   # numpy vertices and faces
+    mesh.to_stl()             # binary STL bytes
 
-Spec version 1 is defined in :mod:`molejo.spec`. Mesh evaluation is not
-implemented yet; see the repository's openspec/ records.
+Spec version 1 is defined in :mod:`molejo.spec` and evaluated in
+:mod:`molejo.evaluator`, which currently sweeps a circle profile along a
+single line; every other primitive raises naming itself. See the
+repository's openspec/ records.
 """
 
 from .authoring import (

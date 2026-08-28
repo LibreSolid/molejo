@@ -92,9 +92,17 @@ needed.
 Pre-alpha. Spec version 1 — profiles (circle, polygon) and path
 primitives (line, arc, helix, wrap, spline) — is defined, and both
 packages parse and validate the document against shared fixtures; the
-Python package also authors it (`Shape`, `Circle`, …, `P`). No
-evaluator is implemented yet: `evaluate` raises on both sides, so the
-sample above is the target, not a promise. See `openspec/changes/`.
+Python package also authors it (`Shape`, `Circle`, …, `P`).
+
+The first sweep evaluates in both runtimes: a circle profile along a
+line, capped and watertight, from Python as numpy arrays and binary STL
+and from JavaScript as reusable three.js buffers, pinned to each other
+by shared parity fixtures. Everything else in the vocabulary raises
+naming itself — arc, helix, wrap, spline, polygon profiles, closed
+loops, and paths of more than one primitive — so the spring in the
+sample above is still the target rather than a promise. See
+`openspec/changes/`.
+
 Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
 is reserved for this project.
 

@@ -159,6 +159,59 @@ both runtimes:
   substrings that matter; message identity is what the fixtures make
   cheap to keep.
 
+**Sweep evaluation conventions.** Settled while implementing the first
+vertical slice (tasks 2.1–2.6, 5.1–5.2), and binding on every evaluator
+and every later primitive. Parity is a claim about *identical* vertex
+ordering, so these are not implementation detail: a fixture generated
+under one ordering is worthless under another, and changing any of them
+invalidates every fixture at once.
+
+- **The start frame.** A path begins at the origin with tangent `+Z`.
+  The profile lies in the plane perpendicular to the tangent, its local
+  x and y axes initially world `+X` and `+Y`. A document therefore
+  describes a shape without also describing where it is; placement stays
+  the consumer's.
+- **Transport is rotation-minimizing.** The frame is carried onto each
+  new tangent by the minimal rotation and turned about nothing else, so
+  a straight path carries a constant frame — exactly, not nearly: equal
+  tangents yield the identity matrix, which is what makes the axial
+  cylinder bitwise stable. An antiparallel tangent has no minimal
+  rotation, so the axis is chosen deterministically rather than
+  arbitrarily. Any twist a primitive wants (a helix's) is that
+  primitive's own, applied on top of transport.
+- **Profile ordering.** Circle vertex *j* of *M* = `tessellation.profile`
+  sits at angle `2*pi*j/M`, at `cos*x + sin*y` in the profile frame. A
+  polygon's vertices are its declared points in order.
+- **Path sampling.** `tessellation.path` is a segment count *N*: an open
+  path has *N* + 1 rings.
+- **Vertex indexing.** Wall vertex `ring*M + j`, ring-major. After the
+  walls come exactly two more vertices: the start-cap centre, then the
+  end-cap centre. So *V* = (*N* + 1)·*M* + 2.
+- **Face ordering and winding.** Walls first, ring-major then *j*, two
+  triangles a quad — `(a, b, c)` then `(a, c, d)` for
+  `a = ring*M + j`, `b = ring*M + (j+1) mod M`, `c = b + M`, `d = a + M`.
+  Then the start-cap fan `(start_centre, (j+1) mod M, j)`, then the
+  end-cap fan `(end_centre, last + j, last + (j+1) mod M)`. Winding is
+  outward throughout: the start cap faces `-tangent`, the end cap
+  `+tangent`. So *F* = 2·*N*·*M* + 2·*M*.
+- **Output types.** Python emits float64 vertices `(V, 3)` and int32
+  faces `(F, 3)`, bitwise identical for a repeated binding. JavaScript
+  emits a `Float32Array` of 3·*V* positions and a `Uint32Array` of 3·*F*
+  indices — the same triangles in the same order. Single precision is
+  the only substantive difference between the runtimes, which is why a
+  fixture declares a tolerance per runtime.
+- **Buffer reuse.** Because the counts follow the document alone, the JS
+  index cannot change for a given spec. `evaluate(spec, values, buffers)`
+  given a previous return value refills the positions in place, leaves
+  the index untouched, and allocates nothing; a fresh call allocates.
+
+Three questions the slice deliberately did not answer, because guessing
+them here would pin them by accident: how *N* is distributed across a
+multi-primitive path, how a closed loop joins its ends, and what
+`tessellation.profile` means for a polygon whose point count is already
+declared. Each raises naming itself rather than choosing; the arc batch
+settles the first two and the first polygon fixture the third.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 
@@ -198,10 +251,19 @@ represents shapes it can define analytically.
   otherwise.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
-- The sweep frame convention — how the profile is transported along
-  the path (rotation-minimizing vs Frenet, and the tie-break on
-  straight segments) — must be pinned once and shared by all three
-  evaluators, including MakePipeShell's trihedron law on the B-rep
-  side. The arc and helix fixtures decide.
+- The sweep frame convention is now settled for the mesh evaluators
+  (see "Sweep evaluation conventions": rotation-minimizing, identity on
+  a straight segment, deterministic axis when antiparallel). What
+  remains open is the B-rep side: which of MakePipeShell's trihedron
+  laws reproduces it, and whether the helix's own twist about the
+  tangent is expressible there or has to be built into the path curve.
+  The arc and helix fixtures decide.
+- How `tessellation.path` is distributed across a path of several
+  primitives — proportional to arc length, per-primitive, or something
+  the author declares — and how a closed loop joins its last ring to
+  its first. The first vertical slice refuses both rather than guessing;
+  the arc batch settles them.
+- What `tessellation.profile` means for a polygon profile, whose vertex
+  count its points already fix. The first polygon fixture decides.
 - Which OCCT binding the `brep` extra depends on (OCP is the working
   assumption, matching the originating consumer's stack).

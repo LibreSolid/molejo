@@ -22,20 +22,20 @@
 
 ## 2. First vertical slice: circle profile, line path
 
-- [ ] 2.1 Red (Python): a cylinder spec (circle profile swept along one
+- [x] 2.1 Red (Python): a cylinder spec (circle profile swept along one
       line) evaluates to a watertight mesh with exactly the declared
       vertex count, capped ends, and the analytically correct volume
       within tolerance.
-- [ ] 2.2 Implement profile evaluation, frame transport along a line,
+- [x] 2.2 Implement profile evaluation, frame transport along a line,
       capping, and mesh assembly in Python.
-- [ ] 2.3 Red (Python): the same spec with the line length as
+- [x] 2.3 Red (Python): the same spec with the line length as
       `{"param": "length"}` evaluates differently under two parameter
       bindings and identically under repeated identical bindings.
-- [ ] 2.4 Implement parameter resolution.
-- [ ] 2.5 First parity fixture: the cylinder spec, two parameter
+- [x] 2.4 Implement parameter resolution.
+- [x] 2.5 First parity fixture: the cylinder spec, two parameter
       bindings, expected arrays; JS side red, then implement the JS
       twin (profile, line, caps) until parity passes.
-- [ ] 2.6 STL export from the Python evaluation (binary STL bytes),
+- [x] 2.6 STL export from the Python evaluation (binary STL bytes),
       asserted watertight by an independent reader.
 
 ## 3. Arc and helix
@@ -66,10 +66,10 @@
 
 ## 5. Parity harness
 
-- [ ] 5.1 Python suite runs every fixture in `fixtures/`; JS suite runs
+- [x] 5.1 Python suite runs every fixture in `fixtures/`; JS suite runs
       the same files; a fixture present on one side and missing from
       the other fails that side's suite.
-- [ ] 5.2 Fixture format documents counts-and-ordering exactness and
+- [x] 5.2 Fixture format documents counts-and-ordering exactness and
       per-fixture coordinate tolerance; one deliberately perturbed
       expectation proves both suites actually compare.
 
