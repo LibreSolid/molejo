@@ -1,0 +1,11 @@
+{
+  "name": "unknown top-level field",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+    "tessellation": {"path": 32, "profile": 16},
+    "material": "spring steel"
+  },
+  "must_mention": ["spec", "unknown field", "material"]
+}

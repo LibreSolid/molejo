@@ -1,0 +1,10 @@
+{
+  "name": "spline with fewer than two points",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "spline", "points": [[0.0, 0.0, 0.0]]}],
+    "tessellation": {"path": 64, "profile": 16}
+  },
+  "must_mention": ["path[0].points", "spline", "at least 2 points"]
+}

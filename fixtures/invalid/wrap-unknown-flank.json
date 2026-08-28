@@ -1,0 +1,19 @@
+{
+  "name": "toothed wrap with an unknown flank",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "polygon", "points": [[-1.0, 0.0], [1.0, 0.0], [1.0, 1.5], [-1.0, 1.5]]},
+    "path": [
+      {
+        "type": "wrap",
+        "around": [
+          {"center": [0.0, 0.0], "radius": 5.1},
+          {"center": [0.0, 210.0], "radius": 5.1}
+        ],
+        "teeth": {"pitch": 2.5, "height": 0.7, "flank": "htd", "count": 180}
+      }
+    ],
+    "tessellation": {"path": 720, "profile": 8}
+  },
+  "must_mention": ["path[0].teeth.flank", "unknown tooth flank", "htd"]
+}

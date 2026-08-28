@@ -1,0 +1,13 @@
+{
+  "name": "unknown path primitive",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [
+      {"type": "line", "to": [0.0, 0.0, 10.0]},
+      {"type": "squiggle", "to": [0.0, 0.0, 20.0]}
+    ],
+    "tessellation": {"path": 32, "profile": 16}
+  },
+  "must_mention": ["path[1]", "unknown path primitive", "squiggle"]
+}

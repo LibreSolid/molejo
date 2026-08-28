@@ -1,0 +1,10 @@
+{
+  "name": "non-positive tessellation count",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+    "tessellation": {"path": 32, "profile": 0}
+  },
+  "must_mention": ["tessellation.profile", "positive integer"]
+}

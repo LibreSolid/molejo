@@ -11,6 +11,9 @@
   },
   "type": "module",
   "main": "src/index.js",
+  "scripts": {
+    "test": "node --test test/"
+  },
   "files": [
     "src"
   ],

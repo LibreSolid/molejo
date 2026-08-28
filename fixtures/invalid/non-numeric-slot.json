@@ -1,0 +1,10 @@
+{
+  "name": "numeric slot holding a string",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, "up", 10.0]}],
+    "tessellation": {"path": 32, "profile": 16}
+  },
+  "must_mention": ["path[0].to[1]", "number or a parameter reference"]
+}

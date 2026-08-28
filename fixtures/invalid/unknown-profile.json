@@ -1,0 +1,10 @@
+{
+  "name": "unknown profile type",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "blob", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+    "tessellation": {"path": 32, "profile": 16}
+  },
+  "must_mention": ["profile", "unknown profile type", "blob"]
+}

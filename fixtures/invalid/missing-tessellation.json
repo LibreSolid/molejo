@@ -1,0 +1,9 @@
+{
+  "name": "missing tessellation counts",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}]
+  },
+  "must_mention": ["spec", "missing required field", "tessellation"]
+}
