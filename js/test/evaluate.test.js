@@ -367,49 +367,182 @@ test('a dangling parameter in a later primitive names that slot', () => {
   );
 });
 
-// --- what this batch does not evaluate yet ------------------------------
+// --- the wrap, the polygon profile, and the closed loop -----------------
+//
+// The belt's geometry is pinned vertex for vertex by the three-pulley and
+// carriage fixtures. What is asserted here is what a fixture cannot: the
+// buffer counts a loop produces, the index that wraps its last ring onto
+// its first, the reuse a running belt needs, and the refusals -- byte for
+// byte the Python evaluator's.
 
-const UNIMPLEMENTED = [
-  ['spline', { type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }],
+const SECTION = [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]];
+
+function belt({
+  around = [
+    { center: [0.0, 0.0], radius: 8.0 },
+    { center: [30.0, 40.0], radius: 3.0 },
+    { center: [60.0, 0.0], radius: 5.0 },
+  ],
+  teeth,
+  anchor,
+  phase,
+  path = 8,
+} = {}) {
+  const wrap = { type: 'wrap', around };
+  if (teeth !== undefined) wrap.teeth = teeth;
+  if (anchor !== undefined) wrap.anchor = anchor;
+  if (phase !== undefined) wrap.phase = phase;
+  return {
+    molejo: 1,
+    profile: { type: 'polygon', points: SECTION },
+    path: [wrap],
+    loop: true,
+    tessellation: { path, profile: SECTION.length },
+  };
+}
+
+const TEETH = { pitch: 2.5, height: 0.75, flank: 'trapezoid', count: 6 };
+
+test('a loop carries no cap centres and one more band of walls', () => {
+  const buffers = evaluate(belt({ path: 8 }), {});
+  // 2 elements a circle at 8 segments each: 48 rings, V = R*M, F = 2*R*M.
+  assert.equal(buffers.vertexCount, 48 * 4);
+  assert.equal(buffers.triangleCount, 2 * 48 * 4);
+  assert.equal(buffers.positions.length, 48 * 4 * 3);
+});
+
+test("the last ring's quads wrap onto ring 0", () => {
+  const buffers = evaluate(belt({ path: 8 }), {});
+  const rings = 48;
+  const at = 2 * (rings - 1) * 4 * 3;
+  const last = (rings - 1) * 4;
+  assert.deepEqual([...buffers.index.slice(at, at + 6)], [last, last + 1, 1, last, 1, 0]);
+});
+
+test('a closed belt is watertight', () => {
+  assert.deepEqual(watertightFailures(evaluate(belt({ teeth: TEETH }), {}).index), []);
+});
+
+test('a toothed belt winds outward', () => {
+  assert.ok(signedVolume(evaluate(belt({ teeth: TEETH }), {})) > 0.0);
+});
+
+test('neither a moving idler nor a phase touches the index', () => {
+  const document = belt({
+    around: [
+      { center: [0.0, 0.0], radius: 8.0 },
+      { center: [30.0, { param: 'idler' }], radius: 3.0 },
+      { center: [60.0, 0.0], radius: 5.0 },
+    ],
+    teeth: TEETH,
+    phase: { param: 'travel' },
+  });
+  const still = evaluate(document, { idler: 40.0, travel: 0.0 });
+  const running = evaluate(document, { idler: 52.0, travel: 7.3 });
+  assert.deepEqual([...still.index], [...running.index]);
+  assert.notDeepEqual([...still.positions], [...running.positions]);
+});
+
+test('a running belt re-evaluates into the caller buffers', () => {
+  const document = belt({ teeth: TEETH, phase: { param: 'travel' } });
+  const buffers = evaluate(document, { travel: 0.0 });
+  const before = [...buffers.positions];
+  const again = evaluate(document, { travel: 3.1 }, buffers);
+  assert.equal(again, buffers);
+  assert.equal(again.positions, buffers.positions);
+  assert.notDeepEqual([...buffers.positions], before);
+});
+
+test('a polygon profile is its declared points, in order', () => {
+  const document = {
+    molejo: 1,
+    profile: { type: 'polygon', points: [[0, 0], [4, 0], [4, 1], [1, 3]] },
+    path: [{ type: 'line', to: [0.0, 0.0, 10.0] }],
+    loop: false,
+    tessellation: { path: 2, profile: 4 },
+  };
+  const buffers = evaluate(document, {});
+  assert.equal(buffers.vertexCount, 3 * 4 + 2);
+  assert.deepEqual([...buffers.positions.slice(0, 12)], [0, 0, 0, 4, 0, 0, 4, 1, 0, 1, 3, 0]);
+});
+
+// The messages are the Python evaluator's, byte for byte.
+const REFUSED = [
   [
-    'wrap',
-    {
-      type: 'wrap',
+    'a circle with no radius',
+    belt({
       around: [
-        { center: [0, 0], radius: 5.1 },
-        { center: [0, 210], radius: 5.1 },
+        { center: [0.0, 0.0], radius: 0.0 },
+        { center: [0.0, 210.0], radius: 5.1 },
       ],
-    },
+    }),
+    'path[0].around[0].radius: must be a positive number, got 0',
+  ],
+  [
+    'circles too close for an external tangent',
+    belt({
+      around: [
+        { center: [0.0, 0.0], radius: 8.0 },
+        { center: [0.0, 4.0], radius: 2.0 },
+      ],
+    }),
+    'path[0].around[1]: a wrap needs an external tangent between consecutive ' +
+      'circles; around[0] and around[1] are too close for one',
+  ],
+  [
+    'a negative tooth height',
+    belt({ teeth: { pitch: 2.5, height: -0.75, flank: 'trapezoid', count: 6 } }),
+    'path[0].teeth.height: must be a non-negative number, got -0.75',
   ],
 ];
 
-for (const [name, primitive] of UNIMPLEMENTED) {
-  test(`the '${name}' primitive names itself as unimplemented`, () => {
-    const document = cylinder();
-    document.path = [primitive];
+for (const [label, document, message] of REFUSED) {
+  test(`${label} is refused, naming the slot`, () => {
     assert.throws(
       () => evaluate(document, {}),
-      (error) =>
-        error.message.includes(name) &&
-        error.message.includes('path[0]') &&
-        error.message.includes('not implemented'),
+      (error) => error instanceof EvaluationError && error.message === message,
     );
   });
 }
 
-test('the polygon profile names itself as unimplemented', () => {
-  const document = cylinder();
-  document.profile = { type: 'polygon', points: [[0, 0], [1, 0], [0, 1]] };
+test('a dangling parameter in a circle names its slot', () => {
+  const document = belt({
+    around: [
+      { center: [0.0, 0.0], radius: 5.1 },
+      { center: [{ param: 'x' }, 210.0], radius: 5.1 },
+    ],
+  });
   assert.throws(
     () => evaluate(document, {}),
-    (error) => /polygon/.test(error.message) && /not implemented/.test(error.message),
+    (error) =>
+      /path\[0\]\.around\[1\]\.center\[0\]/.test(error.message) && /x/.test(error.message),
   );
 });
 
-test('a closed loop is not evaluated yet', () => {
+// --- what this batch does not evaluate yet ------------------------------
+
+test("the 'spline' primitive names itself as unimplemented", () => {
+  const document = cylinder();
+  document.path = [{ type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }];
+  assert.throws(
+    () => evaluate(document, {}),
+    (error) =>
+      error.message.includes('spline') &&
+      error.message.includes('path[0]') &&
+      error.message.includes('not implemented'),
+  );
+});
+
+test('a closed loop that is not a wrap is not evaluated yet', () => {
   const document = cylinder();
   document.loop = true;
-  assert.throws(() => evaluate(document, {}), /loop/);
+  assert.throws(
+    () => evaluate(document, {}),
+    (error) =>
+      error.message ===
+      'loop: closing a chain of primitives is not implemented yet; this molejo ' +
+        "build closes the loop of a 'wrap' path only",
+  );
 });
 
 test('an unimplemented primitive names its position in a chain', () => {
@@ -420,6 +553,6 @@ test('an unimplemented primitive names its position in a chain', () => {
     (error) =>
       error.message ===
       "path[2]: the 'spline' path primitive is not implemented yet; this molejo " +
-        "build evaluates 'line', 'arc' and 'helix' only",
+        "build evaluates 'line', 'arc', 'helix' and 'wrap' only",
   );
 });

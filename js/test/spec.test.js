@@ -80,6 +80,9 @@ test('every v1 path primitive parses', () => {
   for (const primitive of primitives) {
     const document = spring();
     document.path = [primitive];
+    // A wrap is a closed loop and the only primitive of its path, so it
+    // can only be parsed in a document that says so.
+    if (primitive.type === 'wrap') document.loop = true;
     assert.deepEqual(parseSpec(document).path, [primitive]);
   }
 });
@@ -93,6 +96,8 @@ test('every v1 profile parses', () => {
   for (const profile of profiles) {
     const document = spring();
     document.profile = profile;
+    // A polygon is sampled at its own points, no more and no fewer.
+    if (profile.type === 'polygon') document.tessellation.profile = profile.points.length;
     assert.deepEqual(parseSpec(document).profile, profile);
   }
 });

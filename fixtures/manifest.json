@@ -1,8 +1,10 @@
 {
   "parity": [
+    "carriage-belt.json",
     "cylinder.json",
     "oblique-line.json",
     "quarter-bend.json",
-    "spring.json"
+    "spring.json",
+    "three-pulley-belt.json"
   ]
 }

@@ -76,14 +76,19 @@ evaluator has passed its own analytic assertions — watertightness, the
 exact volume of the prism the tessellation describes, and the analytic
 volume approached from below within the computed chord error. Numbers
 copied from an unvalidated implementation would pin a bug in two
-languages instead of catching one.
+languages instead of catching one. The belt fixtures are gated the same
+way and rather harder: the whole vertex array predicted from the
+circles alone, the closed-form loop length, tangency at every contact,
+the tooth crest and root radii, one full clockwise turn, and the exact
+prism the belt's inner and outer faces enclose — which a planar wrap of
+rectangular section admits in closed form, teeth included.
 
 **`manifest.json` names every parity fixture**, and both suites assert it
 agrees with the directory:
 
 ```json
-{ "parity": ["cylinder.json", "oblique-line.json", "quarter-bend.json",
-             "spring.json"] }
+{ "parity": ["carriage-belt.json", "cylinder.json", "oblique-line.json",
+             "quarter-bend.json", "spring.json", "three-pulley-belt.json"] }
 ```
 
 Neither suite keeps a list of its own, so a fixture added for one runtime
