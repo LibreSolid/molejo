@@ -1,0 +1,25 @@
+schema: spec-driven
+
+# Project context shown to AI when creating artifacts.
+context: |
+  molejo is an analytic representation for flexible mechanical parts
+  (springs, belts, cable looms, filament): a serializable spec -- a
+  planar profile swept along a parametric path whose numeric slots may
+  reference named scalar parameters -- with two evaluators kept in
+  parity: Python (python/, package `molejo` on PyPI) for exact meshes
+  and STL in build/test pipelines, and JavaScript (js/, package
+  `molejo` on npm) for per-frame vertex buffers in three.js viewers.
+
+  Conventions:
+  - TDD: red-first, one commit per increment.
+  - Tessellation is fixed and declared in the spec, never adaptive:
+    both evaluators must emit identical vertex counts and ordering.
+  - Parity fixtures live in fixtures/ and are run by both evaluators'
+    suites; coordinates match within each fixture's declared tolerance.
+  - Sweeps only: no booleans, no mesh repair, no physics solvers.
+  - Parameters are plain named numbers; expression languages belong to
+    consumers.
+
+rules:
+  specs:
+    - Describe observable behavior of the current system only; no aspirational requirements in main specs.

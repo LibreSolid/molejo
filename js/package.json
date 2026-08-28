@@ -1,0 +1,26 @@
+{
+  "name": "molejo",
+  "version": "0.0.1-dev.0",
+  "description": "Analytic flexible parts for mechanical CAD: parametric swept shapes evaluated identically in Python and the browser",
+  "license": "Apache-2.0",
+  "author": "Luis Henrique Cassis Fagundes <lhfagundes@gmail.com>",
+  "homepage": "https://github.com/LibreSolid/molejo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LibreSolid/molejo.git"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "cad",
+    "parametric",
+    "sweep",
+    "flexible",
+    "spring",
+    "belt",
+    "three.js"
+  ]
+}
