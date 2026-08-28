@@ -1,6 +1,8 @@
 {
   "parity": [
     "cylinder.json",
-    "oblique-line.json"
+    "oblique-line.json",
+    "quarter-bend.json",
+    "spring.json"
   ]
 }

@@ -79,7 +79,8 @@ languages instead of catching one.
 agrees with the directory:
 
 ```json
-{ "parity": ["cylinder.json", "oblique-line.json"] }
+{ "parity": ["cylinder.json", "oblique-line.json", "quarter-bend.json",
+             "spring.json"] }
 ```
 
 Neither suite keeps a list of its own, so a fixture added for one runtime

@@ -247,11 +247,129 @@ test('a non-positive radius is refused', () => {
   );
 });
 
+// --- chained paths, arcs, and helices -----------------------------------
+//
+// The geometry of a chain is pinned vertex for vertex by the quarter-bend
+// and spring fixtures. What is asserted here is what a fixture cannot
+// say: the buffer counts a chain produces, that they survive a parameter,
+// and that every degenerate primitive throws the message its Python twin
+// throws, to the byte.
+
+function bend({ reach = 20.0, path = 4, profile = 8 } = {}) {
+  return {
+    molejo: 1,
+    profile: { type: 'circle', radius: 1.5 },
+    path: [
+      { type: 'line', to: [0.0, 0.0, 10.0] },
+      {
+        type: 'arc',
+        center: [6.0, 0.0, 10.0],
+        axis: [0.0, 1.0, 0.0],
+        angle: Math.PI / 2.0,
+      },
+      { type: 'line', to: [reach, 0.0, 16.0] },
+    ],
+    loop: false,
+    tessellation: { path, profile },
+  };
+}
+
+function spring({ turns = 2.5, height = 30.0, path = 24, profile = 8 } = {}) {
+  return {
+    molejo: 1,
+    profile: { type: 'circle', radius: 1.0 },
+    path: [{ type: 'helix', radius: 6.0, turns, height }],
+    loop: false,
+    tessellation: { path, profile },
+  };
+}
+
+test('a chain spends the declared segments on every primitive', () => {
+  const buffers = evaluate(bend({ path: 4, profile: 8 }), {});
+  // Three primitives at 4 segments each: 12 segments, 13 rings.
+  assert.equal(buffers.vertexCount, 13 * 8 + 2);
+  assert.equal(buffers.triangleCount, 2 * 12 * 8 + 2 * 8);
+});
+
+test('a chained sweep is watertight', () => {
+  assert.deepEqual(watertightFailures(evaluate(bend(), {}).index), []);
+  assert.deepEqual(watertightFailures(evaluate(spring(), {}).index), []);
+});
+
+test('a chain re-evaluates into the caller buffers', () => {
+  const document = bend({ reach: { param: 'reach' } });
+  const buffers = evaluate(document, { reach: 20.0 });
+  const before = [...buffers.positions];
+  const again = evaluate(document, { reach: 40.0 }, buffers);
+  assert.equal(again, buffers);
+  assert.notDeepEqual([...buffers.positions], before);
+});
+
+test('the coil count does not follow the pitch', () => {
+  const document = spring({ height: { param: 'height' } });
+  const free = evaluate(document, { height: 30.0 });
+  const compressed = evaluate(document, { height: 12.0 });
+  assert.deepEqual([...free.index], [...compressed.index]);
+  assert.notDeepEqual([...free.positions], [...compressed.positions]);
+});
+
+// The messages are the Python evaluator's, byte for byte: a consumer that
+// reads one runtime's diagnostics must not have to relearn the other's.
+const DEGENERATE = [
+  [
+    'an arc with no axis',
+    { type: 'arc', center: [6, 0, 0], axis: [0, 0, 0], angle: 1.0 },
+    'path[0].axis: an arc needs an axis to turn about; its axis has no direction',
+  ],
+  [
+    'an arc whose start lies on its axis',
+    { type: 'arc', center: [0, 0, 0], axis: [0, 1, 0], angle: 1.0 },
+    'path[0].center: an arc needs a radius to turn on; its start point lies on its axis',
+  ],
+  [
+    'an arc that turns nowhere',
+    { type: 'arc', center: [6, 0, 0], axis: [0, 1, 0], angle: 0.0 },
+    'path[0].angle: an arc must turn somewhere; its angle is 0',
+  ],
+  [
+    'a helix with no radius',
+    { type: 'helix', radius: 0.0, turns: 2.5, height: 30.0 },
+    'path[0].radius: must be a positive number, got 0',
+  ],
+  [
+    'a helix that goes nowhere',
+    { type: 'helix', radius: 6.0, turns: 0.0, height: 0.0 },
+    'path[0]: a helix must go somewhere; it makes 0 turns and rises 0',
+  ],
+];
+
+for (const [label, primitive, message] of DEGENERATE) {
+  test(`${label} is refused, naming the slot`, () => {
+    const document = cylinder();
+    document.path = [primitive];
+    assert.throws(
+      () => evaluate(document, {}),
+      (error) => error instanceof EvaluationError && error.message === message,
+    );
+  });
+}
+
+test('a degenerate primitive names its own position in the chain', () => {
+  const document = bend();
+  document.path[1].angle = 0.0;
+  assert.throws(() => evaluate(document, {}), /path\[1\]\.angle/);
+});
+
+test('a dangling parameter in a later primitive names that slot', () => {
+  assert.throws(
+    () => evaluate(bend({ reach: { param: 'reach' } }), {}),
+    (error) => /path\[2\]\.to\[0\]/.test(error.message) && /reach/.test(error.message),
+  );
+});
+
 // --- what this batch does not evaluate yet ------------------------------
 
 const UNIMPLEMENTED = [
-  ['arc', { type: 'arc', center: [0, 0, 0], axis: [0, 0, 1], angle: 1.0 }],
-  ['helix', { type: 'helix', radius: 14.0, turns: 6.5, height: 46.8 }],
   ['spline', { type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }],
   [
     'wrap',
@@ -294,11 +412,14 @@ test('a closed loop is not evaluated yet', () => {
   assert.throws(() => evaluate(document, {}), /loop/);
 });
 
-test('a multi-primitive path is not evaluated yet', () => {
-  const document = cylinder();
-  document.path = [
-    { type: 'line', to: [0, 0, 5] },
-    { type: 'line', to: [0, 0, 10] },
-  ];
-  assert.throws(() => evaluate(document, {}), /tessellation\.path/);
+test('an unimplemented primitive names its position in a chain', () => {
+  const document = bend();
+  document.path[2] = { type: 'spline', points: [[0, 0, 0], [1, 2, 3]] };
+  assert.throws(
+    () => evaluate(document, {}),
+    (error) =>
+      error.message ===
+      "path[2]: the 'spline' path primitive is not implemented yet; this molejo " +
+        "build evaluates 'line', 'arc' and 'helix' only",
+  );
 });
