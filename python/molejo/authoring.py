@@ -460,3 +460,14 @@ class Shape(_Element):
         from .evaluator import evaluate
 
         return evaluate(self.to_dict(), values)
+
+    def brep(self, **values):
+        """Evaluate the shape to an exact B-rep solid at the given values.
+
+        The same sugar over the same document, into the other evaluator:
+        :func:`molejo.brep.evaluate` of what :meth:`to_dict` serializes.
+        Needs the ``brep`` extra, and says so by name when it is missing.
+        """
+        from .brep import evaluate
+
+        return evaluate(self.to_dict(), values)

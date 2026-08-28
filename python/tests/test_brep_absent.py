@@ -48,6 +48,12 @@ def without_the_extra():
     }
     for name in hidden:
         del sys.modules[name]
+    # The package keeps an attribute of its own for an imported submodule,
+    # and `from . import _occt` would hand that back without asking the
+    # import system anything at all.
+    attribute = getattr(molejo, "_occt", None)
+    if attribute is not None:
+        delattr(molejo, "_occt")
     cached = molejo.brep._KERNEL
     molejo.brep._KERNEL = None
     finder = _NoOCP()
@@ -57,6 +63,8 @@ def without_the_extra():
     finally:
         sys.meta_path.remove(finder)
         sys.modules.update(hidden)
+        if attribute is not None:
+            setattr(molejo, "_occt", attribute)
         molejo.brep._KERNEL = cached
 
 

@@ -15,6 +15,14 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
 ]
+
+# The B-rep evaluator is optional: the browser never needs OCCT and a maker
+# who only wants meshes should not install a CAD kernel to get them. `molejo`
+# and its STL export run on numpy alone; `molejo[brep]` adds exact shapes.
+[project.optional-dependencies]
+brep = [
+    "cadquery-ocp",
+]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Manufacturing",

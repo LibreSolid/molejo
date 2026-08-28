@@ -328,12 +328,16 @@ def test_a_ramp_that_crosses_an_arc_declares_its_tolerance():
 
 
 def test_a_belt_whose_teeth_stay_on_its_spans_is_exact():
-    # Two circles far apart, few teeth, and a phase that keeps every ramp
-    # on a straight span: nothing spirals, so nothing is approximated.
-    document = belt(circles=CARRIAGE, teeth=toothed(count=4), phase=0.0)
+    # Two circles 210 apart, four teeth, and a phase that keeps every ramp
+    # on a straight span: nothing spirals, so nothing is approximated and
+    # the toothed belt is as exact as the toothless one.
+    document = belt(circles=CARRIAGE, teeth=toothed(count=4), phase=45.0)
     result = brep(document)
     assert result.tolerance == 0.0
     assert set(result.surfaces()) <= ANALYTIC
+    assert result.volume() == pytest.approx(
+        belt_volume(CARRIAGE, teeth=toothed(count=4), origin=45.0), rel=1e-12
+    )
 
 
 def test_the_belt_volume_does_not_follow_the_tessellation():

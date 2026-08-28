@@ -364,13 +364,15 @@ def _sample_line(primitive, values, segments, frame, loc):
     return centres, _held(frame, segments), frame
 
 
-def _sample_arc(primitive, values, segments, frame, loc):
-    """The current point turned about the axis line through ``center``.
+def _arc_geometry(primitive, values, frame, loc):
+    """The circle an ``arc`` runs on, and the three ways it can be degenerate.
 
     Only the component of ``start - center`` across the axis turns, so
-    ``center`` names an axis line rather than a point the arc must reach.
-    Ring *i* of *N* sits at ``phi = i*angle/N`` on that circle, and the
-    tangent is the circle's, signed by the direction of the turn.
+    ``center`` names an axis line rather than a point the arc must reach:
+    what comes back is the centre *on* that line, the radius, and the
+    radial and tangential units the turn is measured in. The B-rep
+    evaluator builds its edge from the same numbers, so the refusals and
+    their wording are paid for once.
     """
     center = _resolve_vector(primitive["center"], values, f"{loc}.center")
     axis = _resolve_vector(primitive["axis"], values, f"{loc}.axis")
@@ -398,26 +400,48 @@ def _sample_arc(primitive, values, segments, frame, loc):
         )
 
     radial = spoke / radius
-    tangential = np.cross(axis, radial)
+    return {
+        "centre": center + axial,
+        "axis": axis,
+        "angle": angle,
+        "radius": radius,
+        "radial": radial,
+        "tangential": np.cross(axis, radial),
+    }
+
+
+def _sample_arc(primitive, values, segments, frame, loc):
+    """The current point turned about the axis line through ``center``.
+
+    Ring *i* of *N* sits at ``phi = i*angle/N`` on the circle
+    :func:`_arc_geometry` names, and the tangent is the circle's, signed
+    by the direction of the turn.
+    """
+    arc = _arc_geometry(primitive, values, frame, loc)
+    radius, radial, tangential = arc["radius"], arc["radial"], arc["tangential"]
+    angle = arc["angle"]
+
     turn = angle * np.arange(segments + 1, dtype=np.float64) / segments
     cosine = np.cos(turn)[:, None]
     sine = np.sin(turn)[:, None]
 
-    centres = center + axial + radius * (cosine * radial + sine * tangential)
+    centres = arc["centre"] + radius * (cosine * radial + sine * tangential)
     sign = 1.0 if angle > 0.0 else -1.0
     tangents = sign * (cosine * tangential - sine * radial)
     axes, frame = _carried(frame, centres, tangents)
     return centres, axes, frame
 
 
-def _sample_helix(primitive, values, segments, frame, loc):
-    """A helix winding about the incoming tangent, from the current point.
+def _helix_geometry(primitive, values, frame, loc):
+    """The cylinder a ``helix`` winds on, and the two ways it can degenerate.
 
     Its axis is the line through ``origin - radius * x`` along the
     tangent, so the helix starts exactly where the path is; it winds
     right-handed (the frame's *x* turning toward its *y*) and advances
-    ``height`` over ``turns`` turns. The speed is constant, so rings
-    uniform in the turn parameter are uniform in arc length.
+    ``height`` over ``turns`` turns. ``speed`` is constant -- it is the
+    helix's length -- so rings uniform in the turn parameter are uniform
+    in arc length. The B-rep evaluator makes its curve on exactly this
+    cylinder, so the refusals live here rather than in either sampler.
     """
     radius = _resolve(primitive["radius"], values, f"{loc}.radius")
     turns = _resolve(primitive["turns"], values, f"{loc}.turns")
@@ -434,7 +458,28 @@ def _sample_helix(primitive, values, segments, frame, loc):
             f"{loc}: a helix must go somewhere; it makes 0 turns and rises 0"
         )
 
-    axis_point = frame.origin - radius * frame.x
+    return {
+        "radius": radius,
+        "turns": turns,
+        "height": height,
+        "around": around,
+        "speed": speed,
+        "axis_point": frame.origin - radius * frame.x,
+    }
+
+
+def _sample_helix(primitive, values, segments, frame, loc):
+    """A helix winding about the incoming tangent, from the current point.
+
+    Ring *i* of *N* sits at ``u = i/N`` on the cylinder
+    :func:`_helix_geometry` names, at turn ``2*pi*turns*u`` and rise
+    ``height*u``.
+    """
+    helix = _helix_geometry(primitive, values, frame, loc)
+    radius, turns = helix["radius"], helix["turns"]
+    height, around, speed = helix["height"], helix["around"], helix["speed"]
+
+    axis_point = helix["axis_point"]
     steps = np.arange(segments + 1, dtype=np.float64) / segments
     turn = 2.0 * math.pi * turns * steps
     cosine = np.cos(turn)[:, None]
@@ -470,15 +515,14 @@ def _spline_direction(declared, fallback, loc, what):
     return declared / length
 
 
-def _sample_spline(primitive, values, segments, frame, loc):
-    """A cubic Hermite chain through the declared points, clamped at its ends.
+def _spline_tangents(primitive, values, frame, loc):
+    """The points a spline runs through and the tangent it carries at each.
 
     The spline begins where the path has reached, so ``points`` are what
     it runs through and toward: with that start *P0* and the declared
-    *P1 … Pn* it has *n* spans, each spent ``segments`` segments, and the
-    ring at a joint belongs to the span that leaves it.
+    *P1 … Pn* it has *n* spans.
 
-    The tangent it carries at each point is Catmull-Rom inside
+    The tangent at each point is Catmull-Rom inside
     (``m_i = (P_{i+1} - P_{i-1})/2``) and declared at the two ends, scaled
     to the adjacent chord. An absent ``start_tangent`` means the incoming
     tangent -- so a lead-in hands over without a kink -- and an absent
@@ -487,7 +531,9 @@ def _sample_spline(primitive, values, segments, frame, loc):
 
     Consecutive spans share the tangent vector at the point between them,
     so the curve is C1 across every interior point by construction rather
-    than by the author's care.
+    than by the author's care -- which is also what lets the B-rep
+    evaluator write the whole chain as one cubic B-spline from these very
+    numbers.
     """
     points = np.empty((len(primitive["points"]) + 1, 3), dtype=np.float64)
     points[0] = frame.origin
@@ -531,6 +577,18 @@ def _sample_spline(primitive, values, segments, frame, loc):
         else chords[spans - 1]
         * _spline_direction(declared_end, None, f"{loc}.end_tangent", "end")
     )
+    return points, tangents_at
+
+
+def _sample_spline(primitive, values, segments, frame, loc):
+    """The Hermite chain :func:`_spline_tangents` describes, sampled.
+
+    Each of the *n* spans is spent ``segments`` segments and the ring at a
+    joint belongs to the span that leaves it, so a lone spline is
+    ``n*segments + 1`` rings.
+    """
+    points, tangents_at = _spline_tangents(primitive, values, frame, loc)
+    spans = len(points) - 1
 
     centres = np.empty((spans * segments + 1, 3), dtype=np.float64)
     tangents = np.empty_like(centres)
@@ -574,8 +632,8 @@ def _sample_spline(primitive, values, segments, frame, loc):
     return centres, axes, frame
 
 
-def _wrap_geometry(primitive, values, segments, loc):
-    """The belt's own geometry: ring centres, tangents, and arc lengths.
+def _wrap_circles(primitive, values, loc):
+    """The circles a belt runs outside, and the normal it touches each on.
 
     A wrap is planar -- it lies in the world XY plane, because its
     circles are declared there -- and it runs the external tangents,
@@ -585,10 +643,9 @@ def _wrap_geometry(primitive, values, segments, loc):
 
         n = delta*chat + sqrt(1 - delta^2)*rot90(chat),  delta = (r - r')/L
 
-    and the direction of travel is ``(n_y, -n_x)``. The elements of the
-    loop are span 0, the arc about circle 1, span 1, … and finally the
-    arc about circle 0, each spent ``segments`` rings; the loop's origin
-    is where the belt leaves circle 0.
+    and the direction of travel is ``(n_y, -n_x)``. Both refusals a wrap
+    can meet through parameter values live here, so the mesh and the
+    B-rep say the same words.
     """
     circles = primitive["around"]
     count = len(circles)
@@ -623,46 +680,98 @@ def _wrap_geometry(primitive, values, segments, loc):
         across = np.array([-direction[1], direction[0]])
         normals.append(delta * direction + math.sqrt(1.0 - delta * delta) * across)
 
-    rings = 2 * count * segments
-    ring_centres = np.zeros((rings, 3), dtype=np.float64)
-    tangents = np.zeros((rings, 3), dtype=np.float64)
-    stations = np.empty(rings, dtype=np.float64)
-    span_starts = np.empty(count, dtype=np.float64)
-    steps = np.arange(segments, dtype=np.float64) / segments
+    return centres, radii, normals
 
+
+def _wrap_elements(centres, radii, normals):
+    """The 2k elements of the loop, each with the station it starts at.
+
+    Span 0, the arc about circle 1, span 1, … and finally the arc about
+    circle 0, so the loop's own origin is where the belt leaves circle 0.
+    A span is a straight run between two tangent points; an arc runs
+    clockwise about a circle from the normal the belt arrives on to the
+    one it leaves on. Nothing here is sampled: this is the exact
+    decomposition the B-rep evaluator turns into line and arc edges, and
+    the one the mesh evaluator then spends its segments on.
+    """
+    count = len(radii)
+    elements = []
     travelled = 0.0
-    at = 0
     for index in range(count):
         following = (index + 1) % count
         normal = normals[index]
 
-        # The tangent span, from circle `index` to circle `following`.
         start = centres[index] + radii[index] * normal
         end = centres[following] + radii[following] * normal
         length = float(np.linalg.norm(end - start))
-        span_starts[index] = travelled
-        ring_centres[at : at + segments, :2] = start + steps[:, None] * (end - start)
-        tangents[at : at + segments, 0] = normal[1]
-        tangents[at : at + segments, 1] = -normal[0]
-        stations[at : at + segments] = travelled + steps * length
+        elements.append(
+            {
+                "kind": "span",
+                "start": start,
+                "end": end,
+                "normal": normal,
+                "station": travelled,
+                "length": length,
+            }
+        )
         travelled += length
-        at += segments
 
-        # The arc about circle `following`, clockwise from the normal the
-        # belt arrives on to the one it leaves on.
         arrival = math.atan2(normal[1], normal[0])
         departure = math.atan2(normals[following][1], normals[following][0])
         turn = (arrival - departure) % (2.0 * math.pi)
         radius = radii[following]
-        angles = arrival - turn * steps
-        cosine = np.cos(angles)
-        sine = np.sin(angles)
-        ring_centres[at : at + segments, 0] = centres[following][0] + radius * cosine
-        ring_centres[at : at + segments, 1] = centres[following][1] + radius * sine
-        tangents[at : at + segments, 0] = sine
-        tangents[at : at + segments, 1] = -cosine
-        stations[at : at + segments] = travelled + steps * (radius * turn)
+        elements.append(
+            {
+                "kind": "arc",
+                "centre": centres[following],
+                "radius": radius,
+                "from": arrival,
+                "turn": turn,
+                "station": travelled,
+                "length": radius * turn,
+            }
+        )
         travelled += radius * turn
+
+    return elements, travelled
+
+
+def _wrap_geometry(primitive, values, segments, loc):
+    """The belt's ring centres, tangents, and arc-length stations.
+
+    Each of the ``2k`` elements is spent ``segments`` rings, uniformly in
+    arc length -- uniformly in angle on an arc -- and a joint's ring
+    belongs to the element that leaves it, as in any chain.
+    """
+    centres, radii, normals = _wrap_circles(primitive, values, loc)
+    elements, travelled = _wrap_elements(centres, radii, normals)
+    count = len(radii)
+
+    rings = 2 * count * segments
+    ring_centres = np.zeros((rings, 3), dtype=np.float64)
+    tangents = np.zeros((rings, 3), dtype=np.float64)
+    stations = np.empty(rings, dtype=np.float64)
+    steps = np.arange(segments, dtype=np.float64) / segments
+
+    at = 0
+    for element in elements:
+        station, length = element["station"], element["length"]
+        if element["kind"] == "span":
+            start, end = element["start"], element["end"]
+            normal = element["normal"]
+            ring_centres[at : at + segments, :2] = start + steps[:, None] * (end - start)
+            tangents[at : at + segments, 0] = normal[1]
+            tangents[at : at + segments, 1] = -normal[0]
+        else:
+            centre, radius = element["centre"], element["radius"]
+            angles = element["from"] - element["turn"] * steps
+            cosine = np.cos(angles)
+            sine = np.sin(angles)
+            ring_centres[at : at + segments, 0] = centre[0] + radius * cosine
+            ring_centres[at : at + segments, 1] = centre[1] + radius * sine
+            tangents[at : at + segments, 0] = sine
+            tangents[at : at + segments, 1] = -cosine
+        stations[at : at + segments] = station + steps * length
         at += segments
 
     return {
@@ -670,7 +779,7 @@ def _wrap_geometry(primitive, values, segments, loc):
         "tangents": tangents,
         "stations": stations,
         "length": travelled,
-        "span_starts": span_starts,
+        "elements": elements,
     }
 
 
@@ -698,32 +807,42 @@ def _sample_wrap(primitive, values, segments, frame, loc):
     return centres, axes, frame
 
 
-def _wrap_displacement(primitive, values, segments, loc):
-    """How far each ring's inner face is pushed toward the circles.
+def _modulation(stations, origin, period):
+    """The tooth trapezoid at the given arc-length stations.
 
-    Teeth are a periodic trapezoid in arc length whose period is the
-    loop's length over the declared count: an integer count over the
-    whole loop is what closes the pattern at the seam, and what keeps a
-    moving idler changing the tooth pitch *length* rather than the tooth
-    count. One period is a quarter crest centred on the pattern origin, a
-    quarter ramp, a quarter root and a quarter ramp back. The declared
-    ``teeth.pitch`` is the nominal pitch of the belt standard and is not
-    read here (see design.md, "The wrap").
+    One period is a quarter crest centred on the pattern origin, a
+    quarter ramp, a quarter root and a quarter ramp back. The origin is a
+    crest centre, which is what makes an anchor mean "a tooth is clamped
+    here".
+    """
+    fraction = ((stations - origin) / period) % 1.0
+    distance = np.minimum(fraction, 1.0 - fraction)
+    return np.clip((0.375 - distance) * 4.0, 0.0, 1.0)
+
+
+def _wrap_pattern(primitive, values, elements, length, loc):
+    """Where the tooth pattern sits, how long its period is, and how tall.
+
+    The period is the loop's length over the declared count: an integer
+    count over the whole loop is what closes the pattern at the seam, and
+    what keeps a moving idler changing the tooth pitch *length* rather
+    than the tooth count. The declared ``teeth.pitch`` is the nominal
+    pitch of the belt standard and is not read here (see design.md, "The
+    wrap").
 
     The origin is ``anchor`` (a distance along a named tangent span, so a
     belt clamped to a carriage keeps its teeth meshed as the carriage
     runs), or ``phase`` (belt travel from the wrap's own origin), or the
-    wrap's own origin when the document names neither.
+    wrap's own origin when the document names neither. It is resolved
+    even for a wrap without teeth, so a dangling reference in it is still
+    an error rather than a slot nobody read.
     """
     teeth = primitive.get("teeth")
     anchor = primitive.get("anchor")
-    if teeth is None and anchor is None and "phase" not in primitive:
-        return None
 
-    wrap = _wrap_geometry(primitive, values, segments, loc)
     origin = 0.0
     if anchor is not None:
-        origin = wrap["span_starts"][anchor["span"]] + _resolve(
+        origin = elements[2 * anchor["span"]]["station"] + _resolve(
             anchor["at"], values, f"{loc}.anchor.at"
         )
     elif "phase" in primitive:
@@ -737,11 +856,26 @@ def _wrap_displacement(primitive, values, segments, loc):
             f"{loc}.teeth.height: must be a non-negative number, got "
             f"{_describe(height)}"
         )
+    return origin, length / teeth["count"], height
 
-    period = wrap["length"] / teeth["count"]
-    fraction = ((wrap["stations"] - origin) / period) % 1.0
-    distance = np.minimum(fraction, 1.0 - fraction)
-    return height * np.clip((0.375 - distance) * 4.0, 0.0, 1.0)
+
+def _wrap_displacement(primitive, values, segments, loc):
+    """How far each ring's inner face is pushed toward the circles."""
+    if (
+        primitive.get("teeth") is None
+        and primitive.get("anchor") is None
+        and "phase" not in primitive
+    ):
+        return None
+
+    wrap = _wrap_geometry(primitive, values, segments, loc)
+    pattern = _wrap_pattern(
+        primitive, values, wrap["elements"], wrap["length"], loc
+    )
+    if pattern is None:
+        return None
+    origin, period, height = pattern
+    return height * _modulation(wrap["stations"], origin, period)
 
 
 #: The whole v1 path vocabulary, each primitive with its sampler. There is
@@ -877,6 +1011,24 @@ class Mesh:
 # --- the evaluation --------------------------------------------------------
 
 
+def _looped(document):
+    """Whether this path closes -- refusing the loop no build closes yet.
+
+    A wrap is a closed loop and validation has already made its document
+    say so; closing a chain of other primitives waits on the end frame,
+    which a rotation-minimizing transport does not bring back in general.
+    Both evaluators ask here, so neither can quietly close what the other
+    refuses.
+    """
+    looped = document["path"][0]["type"] == "wrap"
+    if document.get("loop", False) and not looped:
+        raise NotImplementedError(
+            "loop: closing a chain of primitives is not implemented yet; this "
+            "molejo build closes the loop of a 'wrap' path only"
+        )
+    return looped
+
+
 def evaluate(document, values=None):
     """Evaluate a molejo document at the given parameter values.
 
@@ -890,15 +1042,7 @@ def evaluate(document, values=None):
     values = {} if values is None else values
 
     path = document["path"]
-    # A wrap is a closed loop and validation has already made its document
-    # say so; closing a chain of other primitives waits on the end frame,
-    # which a rotation-minimizing transport does not bring back in general.
-    looped = path[0]["type"] == "wrap"
-    if document.get("loop", False) and not looped:
-        raise NotImplementedError(
-            "loop: closing a chain of primitives is not implemented yet; this "
-            "molejo build closes the loop of a 'wrap' path only"
-        )
+    looped = _looped(document)
 
     count = document["tessellation"]["profile"]
     segments = document["tessellation"]["path"]
