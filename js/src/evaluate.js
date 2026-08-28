@@ -17,9 +17,10 @@
 //   * the path starts at the origin with tangent +Z, the profile drawn in
 //     world +X/+Y, transported rotation-minimizingly;
 //   * circle profile vertex j of M at angle 2*pi*j/M, cos*x + sin*y;
-//   * tessellation.path is a segment count N, so an open path has N + 1
-//     rings; wall vertex ring*M + j, then the start-cap centre, then the
-//     end-cap centre;
+//   * tessellation.path is a segment count N spent on each primitive, so a
+//     chain of k primitives has k*N + 1 rings and a joint's ring is
+//     sampled once, by the primitive that leaves it; wall vertex
+//     ring*M + j, then the start-cap centre, then the end-cap centre;
 //   * faces run walls (ring-major, then j, two triangles a quad), then
 //     the start-cap fan, then the end-cap fan, wound outward throughout.
 //
@@ -232,22 +233,64 @@ function profilePoints(profile, values, count) {
 
 // --- paths --------------------------------------------------------------
 
-/** The path as `segments + 1` ring centres and their profile axes. */
+/**
+ * The path as `k * segments + 1` ring centres and their profile axes,
+ * `segments` spent on each of the k primitives.
+ *
+ * `tessellation.path` is spent on every primitive rather than divided
+ * among them: an arc-length-proportional split would make the ring count
+ * follow a parameter, which declared tessellation forbids. A primitive
+ * begins where its predecessor ended -- no primitive says where it starts
+ * -- so the ring at a joint is sampled once, by the primitive that leaves
+ * it, and the frame carried across is exactly the identity when the
+ * tangents agree.
+ */
 function samplePath(path, values, segments) {
-  if (path.length !== 1) {
-    throw new NotImplementedError(
-      `path: this molejo build does not distribute tessellation.path across ` +
-        `a multi-primitive path (${path.length} primitives) yet`,
-    );
+  let frame = START_FRAME;
+  const centres = [];
+  const axes = [];
+  for (let index = 0; index < path.length; index += 1) {
+    const primitive = path[index];
+    const loc = `path[${index}]`;
+    const sampler = SAMPLERS[primitive.type];
+    if (sampler === undefined) {
+      throw new NotImplementedError(
+        `${loc}: the '${primitive.type}' path primitive is not implemented yet; ` +
+          `this molejo build evaluates 'line', 'arc' and 'helix' only`,
+      );
+    }
+    const sampled = sampler(primitive, values, segments, frame, loc);
+    frame = sampled.frame;
+    // The last ring of every primitive but the final one is the joint
+    // ring, and belongs to the primitive that leaves it.
+    const rings = index === path.length - 1 ? segments + 1 : segments;
+    for (let ring = 0; ring < rings; ring += 1) {
+      centres.push(sampled.centres[ring]);
+      axes.push(sampled.axes[ring]);
+    }
   }
-  const primitive = path[0];
-  if (primitive.type !== 'line') {
-    throw new NotImplementedError(
-      `path[0]: the '${primitive.type}' path primitive is not implemented yet; ` +
-        `this molejo build evaluates 'line' only`,
-    );
+  return { centres, axes };
+}
+
+/**
+ * The profile axes along a turning primitive, ring by ring.
+ *
+ * Transport is composed step by step rather than taken in one jump from
+ * the incoming frame: that is the discrete rotation-minimizing frame, and
+ * it is what a curve turning under the profile means. For an arc the two
+ * agree exactly -- every tangent lies in the plane perpendicular to the
+ * arc's axis, so every step turns about that same axis -- and for a
+ * helix, whose tangents trace a cone, only the composition is
+ * rotation-minimizing.
+ */
+function carried(startFrame, centres, tangents) {
+  let frame = startFrame;
+  const axes = [];
+  for (let ring = 0; ring < centres.length; ring += 1) {
+    frame = transport(frame, tangents[ring], centres[ring]);
+    axes.push([frame.x, frame.y]);
   }
-  return sampleLine(primitive, values, segments, START_FRAME, 'path[0]');
+  return { axes, frame };
 }
 
 /**
@@ -267,11 +310,11 @@ function sampleLine(primitive, values, segments, startFrame, loc) {
       `${loc}.to: a line must go somewhere; its end coincides with its start`,
     );
   }
-  const frame = transport(startFrame, [
-    direction[0] / length,
-    direction[1] / length,
-    direction[2] / length,
-  ]);
+  const frame = transport(
+    startFrame,
+    [direction[0] / length, direction[1] / length, direction[2] / length],
+    end,
+  );
 
   const centres = [];
   for (let ring = 0; ring <= segments; ring += 1) {
@@ -282,8 +325,142 @@ function sampleLine(primitive, values, segments, startFrame, loc) {
       start[2] + step * direction[2],
     ]);
   }
-  return { centres, axes: centres.map(() => [frame.x, frame.y]) };
+  return { centres, axes: centres.map(() => [frame.x, frame.y]), frame };
 }
+
+/**
+ * The current point turned about the axis line through `center`.
+ *
+ * Only the component of `start - center` across the axis turns, so
+ * `center` names an axis line rather than a point the arc must reach. Ring
+ * i of N sits at `phi = i*angle/N` on that circle, and the tangent is the
+ * circle's, signed by the direction of the turn.
+ */
+function sampleArc(primitive, values, segments, startFrame, loc) {
+  const center = resolveVector(primitive.center, values, `${loc}.center`);
+  const axisSlot = resolveVector(primitive.axis, values, `${loc}.axis`);
+  const angle = resolve(primitive.angle, values, `${loc}.angle`);
+
+  const length = norm(axisSlot);
+  if (length <= 0.0) {
+    throw new EvaluationError(
+      `${loc}.axis: an arc needs an axis to turn about; its axis has no direction`,
+    );
+  }
+  const axis = [axisSlot[0] / length, axisSlot[1] / length, axisSlot[2] / length];
+
+  const origin = startFrame.origin;
+  const spoke = [origin[0] - center[0], origin[1] - center[1], origin[2] - center[2]];
+  const along = dot(spoke, axis);
+  const axial = [axis[0] * along, axis[1] * along, axis[2] * along];
+  const across = [spoke[0] - axial[0], spoke[1] - axial[1], spoke[2] - axial[2]];
+  const radius = norm(across);
+  if (radius <= 0.0) {
+    throw new EvaluationError(
+      `${loc}.center: an arc needs a radius to turn on; its start point lies ` +
+        `on its axis`,
+    );
+  }
+  if (angle === 0.0) {
+    throw new EvaluationError(
+      `${loc}.angle: an arc must turn somewhere; its angle is 0`,
+    );
+  }
+
+  const radial = [across[0] / radius, across[1] / radius, across[2] / radius];
+  const tangential = cross(axis, radial);
+  const sign = angle > 0.0 ? 1.0 : -1.0;
+
+  const centres = [];
+  const tangents = [];
+  for (let ring = 0; ring <= segments; ring += 1) {
+    const turn = (angle * ring) / segments;
+    const cosine = Math.cos(turn);
+    const sine = Math.sin(turn);
+    centres.push([
+      center[0] + axial[0] + radius * (cosine * radial[0] + sine * tangential[0]),
+      center[1] + axial[1] + radius * (cosine * radial[1] + sine * tangential[1]),
+      center[2] + axial[2] + radius * (cosine * radial[2] + sine * tangential[2]),
+    ]);
+    tangents.push([
+      sign * (cosine * tangential[0] - sine * radial[0]),
+      sign * (cosine * tangential[1] - sine * radial[1]),
+      sign * (cosine * tangential[2] - sine * radial[2]),
+    ]);
+  }
+  return { centres, ...carried(startFrame, centres, tangents) };
+}
+
+/**
+ * A helix winding about the incoming tangent, from the current point.
+ *
+ * Its axis is the line through `origin - radius * x` along the tangent, so
+ * the helix starts exactly where the path is; it winds right-handed (the
+ * frame's x turning toward its y) and advances `height` over `turns`
+ * turns. The speed is constant, so rings uniform in the turn parameter are
+ * uniform in arc length.
+ */
+function sampleHelix(primitive, values, segments, startFrame, loc) {
+  const radius = resolve(primitive.radius, values, `${loc}.radius`);
+  const turns = resolve(primitive.turns, values, `${loc}.turns`);
+  const height = resolve(primitive.height, values, `${loc}.height`);
+
+  if (radius <= 0.0) {
+    throw new EvaluationError(
+      `${loc}.radius: must be a positive number, got ${describe(radius)}`,
+    );
+  }
+  const around = 2.0 * Math.PI * turns * radius;
+  const speed = Math.hypot(around, height);
+  if (speed <= 0.0) {
+    throw new EvaluationError(
+      `${loc}: a helix must go somewhere; it makes 0 turns and rises 0`,
+    );
+  }
+
+  const { origin, x, y, tangent } = startFrame;
+  const axisPoint = [
+    origin[0] - radius * x[0],
+    origin[1] - radius * x[1],
+    origin[2] - radius * x[2],
+  ];
+
+  const centres = [];
+  const tangents = [];
+  for (let ring = 0; ring <= segments; ring += 1) {
+    const step = ring / segments;
+    const turn = 2.0 * Math.PI * turns * step;
+    const cosine = Math.cos(turn);
+    const sine = Math.sin(turn);
+    const rise = height * step;
+    const centre = [];
+    const direction = [];
+    for (let axis = 0; axis < 3; axis += 1) {
+      centre.push(
+        axisPoint[axis] +
+          radius * (cosine * x[axis] + sine * y[axis]) +
+          rise * tangent[axis],
+      );
+      direction.push(
+        (around * (-sine * x[axis] + cosine * y[axis]) + height * tangent[axis]) /
+          speed,
+      );
+    }
+    centres.push(centre);
+    tangents.push(direction);
+  }
+  return { centres, ...carried(startFrame, centres, tangents) };
+}
+
+/**
+ * The path primitives this build evaluates. A primitive missing from here
+ * is valid v1 vocabulary that throws naming itself.
+ */
+const SAMPLERS = {
+  line: sampleLine,
+  arc: sampleArc,
+  helix: sampleHelix,
+};
 
 // --- buffers ------------------------------------------------------------
 

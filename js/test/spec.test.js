@@ -140,8 +140,15 @@ test('a spec error is an error', () => {
 });
 
 test('evaluating an unimplemented primitive names it', () => {
+  const document = spring();
+  document.path = [{ type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }];
   assert.throws(
-    () => evaluate(spring(), { height: 46.8 }),
-    (error) => /helix/.test(error.message) && /not implemented/.test(error.message),
+    () => evaluate(document, { height: 46.8 }),
+    (error) => /spline/.test(error.message) && /not implemented/.test(error.message),
   );
+});
+
+test('the canonical spring document evaluates', () => {
+  // The shape the README advertises, at the resolution it declares.
+  assert.equal(evaluate(spring(), { height: 46.8 }).vertexCount, 241 * 16 + 2);
 });
