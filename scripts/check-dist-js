@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# molejo - analytic flexible parts for mechanical CAD
+# Copyright (C) 2026 Luis Henrique Cassis Fagundes
+# SPDX-License-Identifier: Apache-2.0
+#
+# The JavaScript release dry-run: pack `js/`, inspect what came out, and
+# prove it installs and works in a project that is not this repository.
+#
+#     scripts/check-dist-js
+#
+# It packs a tarball into the ignored `js/dist/`, checks its contents against
+# what the package promises to carry (`src/` and the licence; no tests, no
+# fixtures), then installs it into a throwaway scratch project and runs
+# `scripts/dist-smoke.mjs` there. There is no build step: `src/` is plain ESM
+# and ships as written, which is what this check keeps honest -- a package
+# that needed compiling would fail here rather than at a consumer.
+#
+# `js/LICENSE` and `js/NOTICE` are real copies of the repository root's, not
+# symlinks: npm's packer skips symlinks silently, so a symlinked licence would
+# leave the published package with none. `package.json`'s `files` names them
+# because npm auto-includes LICENSE but not NOTICE.
+#
+# It packs nothing but a tarball and it publishes nothing. Publishing is the
+# maintainer's explicit decision; no script in this repository uploads
+# anything.
+
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+version="0.0.1-dev.0"
+tarball_name="molejo-${version}.tgz"
+
+scratch="$(mktemp -d -t molejo-dist-js-XXXXXX)"
+trap 'rm -rf "$scratch"' EXIT
+
+fail() { echo "check-dist-js: $*" >&2; exit 1; }
+step() { echo; echo "== $*"; }
+
+# --- pack -------------------------------------------------------------------
+
+step "packing the tarball"
+rm -rf "$repo/js/dist"
+mkdir -p "$repo/js/dist"
+(cd "$repo/js" && npm pack --pack-destination dist >"$scratch/pack.log" 2>&1) ||
+    { cat "$scratch/pack.log" >&2; fail "npm pack failed"; }
+
+tarball="$repo/js/dist/$tarball_name"
+[ -f "$tarball" ] || fail "expected $tarball_name in js/dist"
+ls -l "$tarball" | sed 's/^/  /'
+
+# --- what the tarball carries -----------------------------------------------
+
+step "tarball contents"
+tar tzf "$tarball" | sed 's/^/  /'
+listing="$(tar tzf "$tarball")"
+
+for module in index spec evaluate; do
+    grep -qx "package/src/$module.js" <<<"$listing" ||
+        fail "the tarball is missing src/$module.js"
+done
+grep -qx "package/package.json" <<<"$listing" || fail "the tarball has no package.json"
+grep -qx "package/LICENSE" <<<"$listing" || fail "the tarball carries no LICENSE"
+grep -qx "package/NOTICE" <<<"$listing" || fail "the tarball carries no NOTICE"
+if grep -Eq '(^|/)tests?/' <<<"$listing"; then fail "the tarball carries tests"; fi
+if grep -q '\.json$' <<<"$(grep -v '^package/package.json$' <<<"$listing")"; then
+    fail "the tarball carries fixtures or other data"
+fi
+echo "  src and the licence present, no tests, no fixtures"
+
+if ! diff -q "$repo/LICENSE" "$repo/js/LICENSE" >/dev/null; then
+    fail "js/LICENSE has drifted from the repository's LICENSE"
+fi
+if ! diff -q "$repo/NOTICE" "$repo/js/NOTICE" >/dev/null; then
+    fail "js/NOTICE has drifted from the repository's NOTICE"
+fi
+echo "  the packaged licence copies still match the repository's"
+
+step "package metadata"
+node -e "
+const meta = require('$repo/js/package.json');
+const wanted = {name: 'molejo', version: '$version', license: 'Apache-2.0', type: 'module', main: 'src/index.js'};
+for (const [key, value] of Object.entries(wanted)) {
+  if (meta[key] !== value) {
+    console.error(\`check-dist-js: package.json \${key} is \${meta[key]}, expected \${value}\`);
+    process.exit(1);
+  }
+  console.log(\`  \${key}: \${meta[key]}\`);
+}
+if (meta.dependencies !== undefined) {
+  console.error('check-dist-js: the package has runtime dependencies; it is meant to have none');
+  process.exit(1);
+}
+console.log('  dependencies: none');
+" || fail "the package metadata is wrong"
+
+# --- install and run --------------------------------------------------------
+
+step "installing the tarball into a scratch project and smoking it"
+project="$scratch/project"
+mkdir -p "$project"
+cat >"$project/package.json" <<'JSON'
+{
+  "name": "molejo-dist-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module"
+}
+JSON
+
+(cd "$project" && npm install --silent --no-audit --no-fund "$tarball") ||
+    fail "installing the tarball failed"
+(cd "$project" && npm ls --depth=0 2>/dev/null | sed 's/^/  /') || true
+
+cp "$repo/scripts/dist-smoke.mjs" "$project/dist-smoke.mjs"
+(cd "$project" && node dist-smoke.mjs "$repo/fixtures/cylinder.json") ||
+    fail "the smoke test failed"
+
+echo
+echo "check-dist-js: the packed tarball installs clean and evaluates."
+echo "Nothing was published; publishing waits for the maintainer's explicit go."

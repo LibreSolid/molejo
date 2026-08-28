@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# molejo - analytic flexible parts for mechanical CAD
+# Copyright (C) 2026 Luis Henrique Cassis Fagundes
+# SPDX-License-Identifier: Apache-2.0
+#
+# The whole release dry-run, both packages, one command:
+#
+#     scripts/check-dist
+#
+# One repository, two packages, one spec version: they are built, checked
+# and smoked together because they release together. See
+# `scripts/check-dist-python` and `scripts/check-dist-js` for what each half
+# does. Neither publishes anything, and neither does this.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "### Python"
+"$here/check-dist-python"
+
+echo
+echo "### JavaScript"
+"$here/check-dist-js"
+
+echo
+echo "check-dist: both packages build, install clean and evaluate the same"
+echo "fixture. Publishing either one waits for the maintainer's explicit go."

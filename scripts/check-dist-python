@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# molejo - analytic flexible parts for mechanical CAD
+# Copyright (C) 2026 Luis Henrique Cassis Fagundes
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Python release dry-run: build `python/`, inspect what came out, and
+# prove it installs and works somewhere that is not this repository.
+#
+#     scripts/check-dist-python
+#
+# It builds a wheel and an sdist, checks their contents against what the
+# package promises to carry (modules yes; tests, fixtures and other
+# repository data no), then installs each of them into its own throwaway
+# venv under a throwaway directory and runs `scripts/dist-smoke.py` there.
+# Running from a scratch directory with a scratch interpreter is the whole
+# point: an import that resolves to the checkout proves nothing.
+#
+# It builds nothing but distributions and it publishes nothing. Publishing
+# is the maintainer's explicit decision; no script in this repository
+# uploads anything.
+
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+version="0.0.1.dev0"
+wheel_name="molejo-${version}-py3-none-any.whl"
+sdist_name="molejo-${version}.tar.gz"
+
+scratch="$(mktemp -d -t molejo-dist-python-XXXXXX)"
+trap 'rm -rf "$scratch"' EXIT
+
+fail() { echo "check-dist-python: $*" >&2; exit 1; }
+step() { echo; echo "== $*"; }
+
+# --- build ------------------------------------------------------------------
+
+step "building the wheel and the sdist"
+python="${PYTHON:-$repo/.venv/bin/python}"
+[ -x "$python" ] || fail "no interpreter at $python (set PYTHON=... to choose one)"
+
+rm -rf "$repo/python/dist" "$repo/python/build"
+(cd "$repo/python" && "$python" -m build >"$scratch/build.log" 2>&1) ||
+    { cat "$scratch/build.log" >&2; fail "the build failed"; }
+
+wheel="$repo/python/dist/$wheel_name"
+sdist="$repo/python/dist/$sdist_name"
+[ -f "$wheel" ] || fail "expected $wheel_name in python/dist"
+[ -f "$sdist" ] || fail "expected $sdist_name in python/dist"
+ls -l "$wheel" "$sdist" | sed 's/^/  /'
+
+# --- what the wheel carries -------------------------------------------------
+
+step "wheel contents"
+"$python" -m zipfile -l "$wheel" | sed 's/^/  /'
+listing="$("$python" -c "
+import sys, zipfile
+print('\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))
+" "$wheel")"
+
+for module in __init__ spec authoring evaluator brep _occt; do
+    grep -qx "molejo/$module.py" <<<"$listing" ||
+        fail "the wheel is missing molejo/$module.py"
+done
+if grep -Eq '(^|/)tests?/' <<<"$listing"; then fail "the wheel carries tests"; fi
+if grep -q '\.json$' <<<"$listing"; then
+    fail "the wheel carries fixtures or other data"
+fi
+grep -qx "molejo-$version.dist-info/licenses/LICENSE" <<<"$listing" ||
+    fail "the wheel carries no LICENSE"
+grep -qx "molejo-$version.dist-info/licenses/NOTICE" <<<"$listing" ||
+    fail "the wheel carries no NOTICE"
+echo "  modules present, no tests, no fixtures, LICENSE and NOTICE included"
+
+step "wheel metadata"
+metadata="$("$python" -c "
+import sys, zipfile
+archive = zipfile.ZipFile(sys.argv[1])
+name = next(n for n in archive.namelist() if n.endswith('.dist-info/METADATA'))
+print(archive.read(name).decode().split('\n\n', 1)[0])
+" "$wheel")"
+sed 's/^/  /' <<<"$metadata"
+grep -qx "Name: molejo" <<<"$metadata" || fail "the wheel is not named molejo"
+grep -qx "Version: $version" <<<"$metadata" || fail "the wheel is not version $version"
+grep -qx "License-Expression: Apache-2.0" <<<"$metadata" ||
+    fail "the wheel does not declare Apache-2.0"
+grep -q "^# molejo" <<<"$("$python" -c "
+import sys, zipfile
+archive = zipfile.ZipFile(sys.argv[1])
+name = next(n for n in archive.namelist() if n.endswith('.dist-info/METADATA'))
+print(archive.read(name).decode())
+" "$wheel")" || fail "the long description did not survive the README symlink"
+echo "  name, version, licence and the symlinked README all check out"
+
+# --- what the sdist carries -------------------------------------------------
+
+step "sdist contents"
+tar tzf "$sdist" | sed 's/^/  /'
+sources="$(tar tzf "$sdist")"
+grep -qx "molejo-$version/README.md" <<<"$sources" || fail "the sdist has no README.md"
+grep -qx "molejo-$version/LICENSE" <<<"$sources" || fail "the sdist has no LICENSE"
+if tar tzvf "$sdist" | grep -q '^l'; then
+    fail "the sdist stores a symlink; extraction outside the repository would break it"
+fi
+echo "  README, LICENSE and NOTICE are real files, not symlinks into the repository"
+
+# --- install and run, twice -------------------------------------------------
+
+smoke() {
+    local label="$1" artifact="$2" venv="$scratch/venv-$1" work="$scratch/work-$1"
+    step "installing the $label into a clean venv and smoking it"
+    mkdir -p "$work"
+    "$python" -m venv "$venv"
+    "$venv/bin/python" -m pip install --quiet --upgrade pip >/dev/null
+    "$venv/bin/python" -m pip install --quiet "$artifact" ||
+        fail "installing the $label failed"
+    "$venv/bin/python" -m pip list --format=freeze | sed 's/^/  installed: /'
+    if "$venv/bin/python" -c "import OCP" 2>/dev/null; then
+        fail "OCP is in the clean venv; the brep-absent check would mean nothing"
+    fi
+
+    cp "$repo/scripts/dist-smoke.py" "$work/dist-smoke.py"
+    (cd "$work" && "$venv/bin/python" dist-smoke.py "$repo/fixtures/cylinder.json") ||
+        fail "the $label smoke test failed"
+}
+
+smoke wheel "$wheel"
+smoke sdist "$sdist"
+
+echo
+echo "check-dist-python: wheel and sdist both install clean and evaluate."
+echo "Nothing was published; publishing waits for the maintainer's explicit go."
