@@ -81,14 +81,21 @@ way and rather harder: the whole vertex array predicted from the
 circles alone, the closed-form loop length, tangency at every contact,
 the tooth crest and root radii, one full clockwise turn, and the exact
 prism the belt's inner and outer faces enclose — which a planar wrap of
-rectangular section admits in closed form, teeth included.
+rectangular section admits in closed form, teeth included. The loom
+fixtures are gated on the Hermite chain reproduced independently: both
+declared ends reached bit for bit through the cap centres, every ring
+centre on the closed-form curve, every ring across the closed-form
+tangent with the tube's cross-section still circular, the ring at each
+interior point across the tangent the two spans share, and the mitred
+tube the sampling describes.
 
 **`manifest.json` names every parity fixture**, and both suites assert it
 agrees with the directory:
 
 ```json
-{ "parity": ["carriage-belt.json", "cylinder.json", "oblique-line.json",
-             "quarter-bend.json", "spring.json", "three-pulley-belt.json"] }
+{ "parity": ["carriage-belt.json", "cylinder.json", "filament-loom.json",
+             "loom-lead-in.json", "oblique-line.json", "quarter-bend.json",
+             "spring.json", "three-pulley-belt.json"] }
 ```
 
 Neither suite keeps a list of its own, so a fixture added for one runtime

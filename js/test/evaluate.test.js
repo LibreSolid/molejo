@@ -519,19 +519,167 @@ test('a dangling parameter in a circle names its slot', () => {
   );
 });
 
-// --- what this batch does not evaluate yet ------------------------------
+// --- the spline and the loom --------------------------------------------
+//
+// The loom's geometry is pinned vertex for vertex by the filament-loom and
+// loom-lead-in fixtures. What is asserted here is what a fixture cannot:
+// the counts a spline of several spans produces, the ends it reaches, the
+// reuse a running head needs, and the refusals -- byte for byte the Python
+// evaluator's.
 
-test("the 'spline' primitive names itself as unimplemented", () => {
-  const document = cylinder();
-  document.path = [{ type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }];
-  assert.throws(
-    () => evaluate(document, {}),
-    (error) =>
-      error.message.includes('spline') &&
-      error.message.includes('path[0]') &&
-      error.message.includes('not implemented'),
+const ENTRY = [0.0, 1.0, 0.0];
+const DOWN = [0.0, 0.0, -1.0];
+const SAG = [[0.0, 90.0, -35.0], [60.0, 170.0, -10.0]];
+const HEAD = [{ param: 'head_x' }, { param: 'head_y' }, { param: 'head_z' }];
+const NEAR = { head_x: 95.0, head_y: 215.0, head_z: -45.0 };
+const FAR = { head_x: 140.0, head_y: 190.0, head_z: -20.0 };
+
+function loom({
+  points = [...SAG, HEAD],
+  startTangent = ENTRY,
+  endTangent = DOWN,
+  lead,
+  path = 6,
+  profile = 8,
+} = {}) {
+  const spline = { type: 'spline', points };
+  if (startTangent !== undefined) spline.start_tangent = startTangent;
+  if (endTangent !== undefined) spline.end_tangent = endTangent;
+  return {
+    molejo: 1,
+    profile: { type: 'circle', radius: 2.0 },
+    path: lead === undefined ? [spline] : [{ type: 'line', to: lead }, spline],
+    loop: false,
+    tessellation: { path, profile },
+  };
+}
+
+test('a spline spends the declared segments on every span', () => {
+  // Three declared points are three spans at 6 segments each: 19 rings.
+  const buffers = evaluate(loom(), NEAR);
+  assert.equal(buffers.vertexCount, 19 * 8 + 2);
+  assert.equal(buffers.triangleCount, 2 * 18 * 8 + 2 * 8);
+});
+
+test('one declared point is one span', () => {
+  assert.equal(evaluate(loom({ points: [HEAD] }), NEAR).vertexCount, 7 * 8 + 2);
+});
+
+test('a spline in a chain spends its segments per span', () => {
+  // Five on the line -- its last ring is the joint, owned by the spline --
+  // then three spans at five each: 21 rings.
+  const buffers = evaluate(loom({ lead: [0.0, 20.0, 0.0], path: 5 }), NEAR);
+  assert.equal(buffers.vertexCount, 21 * 8 + 2);
+});
+
+test('both ends are hit exactly', () => {
+  // The Hermite basis is exactly (1, 0, 0, 0) at t = 0 and (0, 0, 1, 0) at
+  // t = 1, so the two cap centres are the declared ends themselves --
+  // exactly here too, because Float32 holds these numbers.
+  const buffers = evaluate(loom(), NEAR);
+  const at = 19 * 8 * 3;
+  assert.deepEqual([...buffers.positions.slice(at, at + 3)], [0, 0, 0]);
+  assert.deepEqual(
+    [...buffers.positions.slice(at + 3, at + 6)],
+    [NEAR.head_x, NEAR.head_y, NEAR.head_z],
   );
 });
+
+test('a loom is watertight and winds outward', () => {
+  const buffers = evaluate(loom({ path: 9, profile: 16 }), NEAR);
+  assert.deepEqual(watertightFailures(buffers.index), []);
+  assert.ok(signedVolume(buffers) > 0.0);
+});
+
+test('a moving head touches no index', () => {
+  const near = evaluate(loom(), NEAR);
+  const far = evaluate(loom(), FAR);
+  assert.deepEqual([...near.index], [...far.index]);
+  assert.notDeepEqual([...near.positions], [...far.positions]);
+});
+
+test('a running head re-evaluates into the caller buffers', () => {
+  const buffers = evaluate(loom(), NEAR);
+  const before = [...buffers.positions];
+  const again = evaluate(loom(), FAR, buffers);
+  assert.equal(again, buffers);
+  assert.equal(again.positions, buffers.positions);
+  assert.notDeepEqual([...buffers.positions], before);
+});
+
+test('a declared tangent is a direction and its length is ignored', () => {
+  const plain = evaluate(loom({ startTangent: [0.0, 1.0, 0.0] }), NEAR);
+  const stretched = evaluate(loom({ startTangent: [0.0, 37.5, 0.0] }), NEAR);
+  assert.deepEqual([...stretched.positions], [...plain.positions]);
+});
+
+test('without a start tangent a spline leaves the way it came', () => {
+  // The lead-in runs along +Y, so the joint ring lies across it: every
+  // vertex of that ring is at y = 20.
+  const segments = 6;
+  const buffers = evaluate(loom({ lead: [0.0, 20.0, 0.0], path: segments }), NEAR);
+  for (let j = 0; j < 8; j += 1) {
+    assert.ok(Math.abs(buffers.positions[(segments * 8 + j) * 3 + 1] - 20.0) < 1e-4);
+  }
+});
+
+// The messages are the Python evaluator's, byte for byte.
+const SPLINE_REFUSED = [
+  [
+    'a point coinciding with the one before it',
+    loom({ points: [[0, 0, 0], [10, 0, 0]] }),
+    'path[0].points[0]: a spline must go somewhere; points[0] coincides with ' +
+      'the point before it',
+  ],
+  [
+    'a start tangent with no direction',
+    loom({ startTangent: [0.0, 0.0, 0.0] }),
+    "path[0].start_tangent: a spline's start tangent needs a direction; it has " +
+      'no length',
+  ],
+  [
+    'an end tangent with no direction',
+    loom({ endTangent: [0.0, 0.0, 0.0] }),
+    "path[0].end_tangent: a spline's end tangent needs a direction; it has no length",
+  ],
+  [
+    'a point whose neighbours coincide',
+    loom({
+      points: [[0, 40, 0], [0, 0, 0], [0, 60, 0]],
+      startTangent: [0, 1, 0],
+      endTangent: [0, 1, 0],
+    }),
+    'path[0].points[0]: a spline needs a direction where it turns; the points ' +
+      'on either side of points[0] coincide',
+  ],
+];
+
+for (const [label, document, message] of SPLINE_REFUSED) {
+  test(`${label} is refused, naming the slot`, () => {
+    assert.throws(
+      () => evaluate(document, NEAR),
+      (error) => error instanceof EvaluationError && error.message === message,
+    );
+  });
+}
+
+test('a dangling parameter in a spline point names its slot', () => {
+  assert.throws(
+    () => evaluate(loom(), { head_x: 95.0, head_y: 215.0 }),
+    (error) =>
+      /path\[0\]\.points\[2\]\[2\]/.test(error.message) && /head_z/.test(error.message),
+  );
+});
+
+test('a dangling parameter in a tangent names its slot', () => {
+  assert.throws(
+    () => evaluate(loom({ endTangent: [0.0, 0.0, { param: 'aim' }] }), NEAR),
+    (error) =>
+      /path\[0\]\.end_tangent\[2\]/.test(error.message) && /aim/.test(error.message),
+  );
+});
+
+// --- what this batch does not evaluate yet ------------------------------
 
 test('a closed loop that is not a wrap is not evaluated yet', () => {
   const document = cylinder();
@@ -545,14 +693,7 @@ test('a closed loop that is not a wrap is not evaluated yet', () => {
   );
 });
 
-test('an unimplemented primitive names its position in a chain', () => {
-  const document = bend();
-  document.path[2] = { type: 'spline', points: [[0, 0, 0], [1, 2, 3]] };
-  assert.throws(
-    () => evaluate(document, {}),
-    (error) =>
-      error.message ===
-      "path[2]: the 'spline' path primitive is not implemented yet; this molejo " +
-        "build evaluates 'line', 'arc', 'helix' and 'wrap' only",
-  );
+test('a degenerate spline in a chain names its own position', () => {
+  const document = loom({ points: [[0, 0, 20], [10, 0, 20]], lead: [0, 0, 20] });
+  assert.throws(() => evaluate(document, {}), /path\[1\]\.points\[0\]/);
 });

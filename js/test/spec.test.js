@@ -59,6 +59,13 @@ test('every v1 path primitive parses', () => {
     { type: 'arc', center: [0, 0, 0], axis: [0, 0, 1], angle: { param: 'sweep' } },
     { type: 'helix', radius: 14.0, turns: 6.5, height: 46.8 },
     { type: 'spline', points: [[0, 0, 0], [1, 2, 3]] },
+    { type: 'spline', points: [[{ param: 'x' }, 2, 3]] },
+    {
+      type: 'spline',
+      points: [[0.0, 90.0, -35.0], [{ param: 'x' }, 2, 3]],
+      start_tangent: [0.0, 1.0, 0.0],
+      end_tangent: [0.0, 0.0, { param: 'aim' }],
+    },
     {
       type: 'wrap',
       around: [
@@ -144,13 +151,19 @@ test('a spec error is an error', () => {
   assert.ok(SpecError.prototype instanceof Error);
 });
 
-test('evaluating an unimplemented primitive names it', () => {
+test('every v1 path primitive evaluates', () => {
+  // The whole path vocabulary is implemented, so there is no branch left
+  // that names one as missing: an unknown type is a structural refusal.
   const document = spring();
-  document.path = [{ type: 'spline', points: [[0, 0, 0], [1, 2, 3]] }];
-  assert.throws(
-    () => evaluate(document, { height: 46.8 }),
-    (error) => /spline/.test(error.message) && /not implemented/.test(error.message),
-  );
+  document.path = [
+    {
+      type: 'spline',
+      points: [[0.0, 90.0, -35.0], [95.0, 215.0, -45.0]],
+      start_tangent: [0.0, 1.0, 0.0],
+      end_tangent: [0.0, 0.0, -1.0],
+    },
+  ];
+  assert.equal(evaluate(document, { height: 46.8 }).vertexCount, 481 * 16 + 2);
 });
 
 test('the canonical spring document evaluates', () => {

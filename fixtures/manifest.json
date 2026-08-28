@@ -2,6 +2,8 @@
   "parity": [
     "carriage-belt.json",
     "cylinder.json",
+    "filament-loom.json",
+    "loom-lead-in.json",
     "oblique-line.json",
     "quarter-bend.json",
     "spring.json",
