@@ -453,6 +453,131 @@ rather than invented later.
   (*L* ≤ |Δ*r*|, which also catches coincident centres), and a negative
   tooth height.
 
+**The spline, its end tangents, and the loom.** Settled while
+implementing the spline (tasks 4.4–4.6) against the filament-loom
+validation case, and binding on every evaluator. The loom is a run of
+filament or cable with one end fixed at the machine frame's entry — a
+fixed point and a fixed entry direction — and the other clamped to the
+extruder head, whose position follows three parameters and whose entry
+direction is fixed relative to the head, because the filament enters the
+extruder from above however the head is standing. The designer needs the
+two endpoints hit exactly, the direction controlled at *both* ends, the
+sag between them shaped by a few interior points, every coordinate
+parameter-bindable, and pure closed-form arithmetic identical in the two
+runtimes.
+
+- **The flavour is a cubic Hermite chain: Catmull-Rom inside, clamped at
+  the ends.** Weighed against that list, neither candidate answers the
+  loom alone:
+
+  - *Catmull-Rom through the designer's points* interpolates, so the
+    endpoints and every waypoint are hit exactly, and sag is shaped by
+    moving points that are **on** the curve — which is how a designer
+    thinks about a cable run. But it gives no end-tangent control at
+    all: the tangent at an end is whatever a phantom point or a
+    one-sided difference makes it, so the loom's two fixed entry
+    directions cannot be stated. It answers everything but the
+    requirement the loom exists to make.
+  - *Cubic Bézier with explicit tangents* controls both ends exactly,
+    but its interior handles are control points **off** the curve.
+    Shaping sag then means moving points the curve does not pass
+    through, and a run wanting two or three waypoints becomes a
+    hand-managed chain of Béziers with the author owing C1 at every
+    joint — the representation's job, done by hand.
+
+  v1 takes both halves, which costs nothing because they are the same
+  curve. A spline is a chain of cubic Hermite spans through the declared
+  points; the tangent at an interior point is the uniform Catmull-Rom
+  one, and the tangents at the two ends are declared (the *clamped* end
+  condition). Interpolating, C1 by construction, one pass of arithmetic,
+  and the end directions under the author's hand.
+- **A spline does not declare its start, and `points` are what it runs
+  through and toward.** As for every primitive but the wrap, a spline
+  begins at the point the path has reached. With that start *P*₀ and the
+  declared points *P*₁ … *P*ₙ, the spline has *n* spans, and its end
+  point *P*ₙ and end tangent become the chain state. A single declared
+  point is an ordinary spline of one span — a cubic Bézier between the
+  two ends, which is the loom without a waypoint — so the schema asks
+  for at least one, not two.
+- **The tangents.** Writing *ŝ* for the declared `start_tangent` and *ê*
+  for the declared `end_tangent`, both normalized:
+
+      m_0 = |P_1 - P_0| * ŝ
+      m_i = (P_{i+1} - P_{i-1}) / 2                    (0 < i < n)
+      m_n = |P_n - P_{n-1}| * ê
+
+  A declared tangent is a **direction**: its length is ignored, exactly
+  as `arc.axis`'s is, and the Hermite speed at that end is the adjacent
+  chord's — the same scale the Catmull-Rom interior tangents carry, so a
+  clamped end is no fuller or flatter than an interior point. What
+  varies with the declared vector is where the curve points, which is
+  the whole of what the loom asks for.
+- **An absent tangent means the thing no literal could say.** Without
+  `start_tangent` the spline leaves along the **incoming tangent**, so it
+  joins its predecessor C1 and a lead-in line hands over without a kink;
+  for the first primitive of a path that is the start frame's +Z.
+  Without `end_tangent` it arrives along the final chord *P*ₙ − *P*ₙ₋₁,
+  the one-sided end condition, since there is nothing after it to
+  continue into. Neither default is a second way to say something the
+  document could already state: the incoming tangent depends on
+  parameter values (a param-bound lead-in has no writable direction),
+  and the final chord does too.
+- **A span is an ordinary cubic Hermite.** For span *i* from *P_i* to
+  *P*_{*i*+1}, ring *j* of *N* sits at *t* = *j*/*N* with
+
+      centre   = h00*P_i + h10*m_i + h01*P_{i+1} + h11*m_{i+1}
+      h00 = 2t³-3t²+1   h10 = t³-2t²+t   h01 = 3t²-2t³   h11 = t³-t²
+      velocity = (6t²-6t)*(P_i - P_{i+1}) + (3t²-4t+1)*m_i + (3t²-2t)*m_{i+1}
+      tangent  = velocity / |velocity|
+
+  The velocity is *m_i* at *t* = 0 and *m*_{*i*+1} at *t* = 1, and
+  consecutive spans share that vector, so the curve is C1 across every
+  interior point by construction rather than by the author's care. Frame
+  transport is the ordinary ring-by-ring rotation-minimizing one; the
+  spline asks for no twist of its own.
+- **Segments are spent per span, and the span count is structural.** A
+  spline through *n* declared points is *n* spans, each spent
+  *N* = `tessellation.path` segments, so a lone spline has *n*·*N* + 1
+  rings and a joint's ring belongs to the span that leaves it. This is
+  the same refinement the wrap already needed — a wrap of *k* circles is
+  2*k* elements, each spent *N* — and it is now stated once for the
+  vocabulary: **`tessellation.path` is a segment count spent on each
+  *element* of the path, and a primitive's element count is a function
+  of the document alone** (1 for `line`, `arc` and `helix`, 2*k* for a
+  wrap of *k* circles, *n* for a spline of *n* declared points). The
+  length of a `points` list is structural, so no parameter can move a
+  ring count. Nothing already pinned moves either: the cylinder, the
+  quarter bend and the spring hold no spline, and *n* = 1 reads exactly
+  as the unadorned per-primitive rule did.
+- **What a spline refuses at evaluation**, naming the slot, because all
+  of them can arrive through parameters: two consecutive points that
+  coincide (a span of no length, whose tangent has no direction), a
+  declared `start_tangent` or `end_tangent` of zero length, an interior
+  point whose two neighbours coincide (the Catmull-Rom tangent there
+  vanishes — the curve doubling back on itself), and a ring whose
+  velocity vanishes inside a span. The last is a cusp the author asked
+  for; molejo refuses it rather than dividing by zero, because a NaN
+  mesh is not the "deterministic and visibly wrong" that a kinked joint
+  is.
+- **The K^d claim is structural, not a benchmark.** The loom is the case
+  that makes the claim concrete — a shape following three axes at once,
+  which a sampled representation could only serve by baking a grid over
+  all three — and what molejo asserts is stronger and cheaper to check
+  than a timing: every numeric slot is read exactly **once** per
+  evaluation, and the arithmetic that follows does not know whether the
+  slot held a literal or a parameter. So a fully-parametric loom and its
+  fully-literal twin evaluate through the identical number of slot reads
+  to bitwise-identical vertices, and evaluation cost follows the declared
+  tessellation alone. Nothing anywhere samples a parameter grid; the
+  suite asserts that rather than measuring around it.
+- **The B-rep side gets the spline exactly.** Span *i* is the cubic
+  Bézier with poles *P_i*, *P_i* + *m_i*/3, *P*_{*i*+1} −
+  *m*_{*i*+1}/3, *P*_{*i*+1}, and the C1 chain of them is one cubic
+  B-spline curve (interior knots of multiplicity 2). So the *path* is
+  exact in OCCT, with no fitting and no tolerance; only the swept
+  *surface* stays the tolerance-declared approximation recorded above,
+  as it is for the helix.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 
@@ -487,9 +612,14 @@ represents shapes it can define analytically.
   difference, which is what a stretched belt physically does. The belt
   validation case decides; nothing chooses it early, because the
   document already records both numbers.
-- Spline flavor for v1: Catmull-Rom through designer points vs cubic
-  Bézier with explicit tangents. The loom validation case decides; both
-  are pure arithmetic and parity-safe.
+- `spline` residuals, now that "The spline" above settles the flavour,
+  the end tangents, the span allocation and the refusals: the
+  parameterization is the uniform Catmull-Rom one, which overshoots when
+  consecutive chords differ wildly in length, and the centripetal
+  variant is the known fix — equally closed form, equally parity-safe,
+  and a different curve through the same points. The loom's spans are
+  comparable in length, so nothing chooses it early; a project with a
+  run that bunches its waypoints decides.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
 - The sweep frame convention is now settled for the mesh evaluators
