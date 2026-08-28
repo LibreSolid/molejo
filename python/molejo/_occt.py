@@ -15,6 +15,14 @@ pins:
 
 * ``line`` is an edge between two points; ``arc`` is an edge on the
   circle its axis and start point define.
+* ``helix`` is a 2D line in the parameter space of a
+  ``Geom_CylindricalSurface`` -- the exact curve on the exact cylinder,
+  not a fitted approximation of one.
+* ``spline`` is one degree-3 B-spline: span *i* is the Bezier with poles
+  *P_i*, *P_i* + *m_i*/3, *P_{i+1}* - *m_{i+1}*/3, *P_{i+1}*, and because
+  the Hermite chain is C1 by construction the whole chain needs only
+  double interior knots and ``2n + 2`` poles, which are the two poles
+  *P_i* -/+ *m_i*/3 straddling every point.
 * ``wrap`` is the chain of external tangent lines and the arcs between
   them, in the world XY plane.
 
@@ -45,21 +53,28 @@ from OCP.BRepBuilderAPI import (
 )
 from OCP.BRepCheck import BRepCheck_Analyzer
 from OCP.BRepGProp import BRepGProp
+from OCP.BRepLib import BRepLib
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell
 from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCP.GC import GC_MakeArcOfCircle
+from OCP.Geom import Geom_BSplineCurve, Geom_CylindricalSurface
+from OCP.Geom2d import Geom2d_Line
 from OCP.GeomAPI import GeomAPI_Interpolate
 from OCP.GProp import GProp_GProps
-from OCP.TColgp import TColgp_HArray1OfPnt
+from OCP.TColStd import TColStd_Array1OfInteger, TColStd_Array1OfReal
+from OCP.TColgp import TColgp_Array1OfPnt, TColgp_HArray1OfPnt
 from OCP.TopAbs import TopAbs_FACE, TopAbs_SHELL
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS
 from OCP.gp import (
     gp_Ax2,
+    gp_Ax3,
     gp_Circ,
     gp_Dir,
+    gp_Dir2d,
     gp_Pln,
     gp_Pnt,
+    gp_Pnt2d,
     gp_Vec,
 )
 
@@ -70,11 +85,13 @@ from .evaluator import (
     Frame,
     _arc_geometry,
     _describe,
+    _helix_geometry,
     _looped,
     _modulation,
     _profile_points,
     _resolve,
     _resolve_vector,
+    _spline_tangents,
     _wrap_circles,
     _wrap_elements,
     _wrap_pattern,
@@ -269,11 +286,88 @@ def _arc_edges(primitive, values, frame, loc):
     return [edge], entry, exit_frame, False
 
 
-#: The path primitives this build constructs exactly. One missing from
-#: here is valid v1 vocabulary that raises naming itself.
+def _helix_edges(primitive, values, frame, loc):
+    helix = _helix_geometry(primitive, values, frame, loc)
+    radius, turns, height = helix["radius"], helix["turns"], helix["height"]
+    around, speed = helix["around"], helix["speed"]
+    axis_point = helix["axis_point"]
+
+    # The exact curve on the exact cylinder: a straight line in the
+    # surface's own (angle, rise) parameter space, from (0, 0) to
+    # (2*pi*turns, height). OCCT keeps the pcurve and its surface, and the
+    # 3D curve it derives for algorithms that want one is the only
+    # approximation in the path.
+    surface = Geom_CylindricalSurface(
+        gp_Ax3(_pnt(axis_point), _dir(frame.tangent), _dir(frame.x)), radius
+    )
+    turn = 2.0 * math.pi * turns
+    reach = math.hypot(turn, height)
+    edge = BRepBuilderAPI_MakeEdge(
+        Geom2d_Line(gp_Pnt2d(0.0, 0.0), gp_Dir2d(turn / reach, height / reach)),
+        surface,
+        0.0,
+        reach,
+    ).Edge()
+    BRepLib.BuildCurves3d_s(edge)
+
+    cosine, sine = math.cos(turn), math.sin(turn)
+    end = (
+        axis_point
+        + radius * (cosine * frame.x + sine * frame.y)
+        + height * frame.tangent
+    )
+    entry = transport(frame, (around * frame.y + height * frame.tangent) / speed, frame.origin)
+    tangent = (
+        around * (-sine * frame.x + cosine * frame.y) + height * frame.tangent
+    ) / speed
+    return [edge], entry, transport(frame, tangent, end), True
+
+
+def _spline_edges(primitive, values, frame, loc):
+    points, tangents = _spline_tangents(primitive, values, frame, loc)
+    spans = len(points) - 1
+
+    # Span i is the Bezier with poles P_i, P_i + m_i/3, P_{i+1} - m_{i+1}/3,
+    # P_{i+1}. Because consecutive spans share m at the point between them
+    # the chain is C1, so it needs only double interior knots: the two poles
+    # straddling each interior point are P_i -/+ m_i/3, and the whole curve
+    # is 2n + 2 poles rather than a Bezier chain's 3n + 1.
+    poles = [points[0], points[0] + tangents[0] / 3.0]
+    for index in range(1, spans):
+        poles.append(points[index] - tangents[index] / 3.0)
+        poles.append(points[index] + tangents[index] / 3.0)
+    poles.append(points[spans] - tangents[spans] / 3.0)
+    poles.append(points[spans])
+
+    array = TColgp_Array1OfPnt(1, len(poles))
+    for index, pole in enumerate(poles):
+        array.SetValue(index + 1, _pnt(pole))
+    knots = TColStd_Array1OfReal(1, spans + 1)
+    multiplicities = TColStd_Array1OfInteger(1, spans + 1)
+    for index in range(spans + 1):
+        knots.SetValue(index + 1, float(index))
+        multiplicities.SetValue(index + 1, 4 if index in (0, spans) else 2)
+
+    curve = Geom_BSplineCurve(array, knots, multiplicities, 3)
+    edge = BRepBuilderAPI_MakeEdge(curve).Edge()
+
+    entry = transport(
+        frame, tangents[0] / np.linalg.norm(tangents[0]), points[0]
+    )
+    exit_frame = transport(
+        frame, tangents[spans] / np.linalg.norm(tangents[spans]), points[spans]
+    )
+    return [edge], entry, exit_frame, True
+
+
+#: The whole v1 path vocabulary but the wrap, which has a construction of
+#: its own. There is no fallback here because there is nothing left to
+#: fall back from: validation refuses a primitive this table does not name.
 _EDGES = {
     "line": _line_edges,
     "arc": _arc_edges,
+    "helix": _helix_edges,
+    "spline": _spline_edges,
 }
 
 
@@ -292,13 +386,7 @@ def _swept_solid(path, profile, values, count):
     entry = None
     approximated = False
     for index, primitive in enumerate(path):
-        builder = _EDGES.get(primitive["type"])
-        if builder is None:
-            raise NotImplementedError(
-                f"path[{index}]: the '{primitive['type']}' primitive has no exact "
-                f"construction in this molejo build yet"
-            )
-        made, at_start, frame, rough = builder(
+        made, at_start, frame, rough = _EDGES[primitive["type"]](
             primitive, values, frame, f"path[{index}]"
         )
         edges.extend(made)
