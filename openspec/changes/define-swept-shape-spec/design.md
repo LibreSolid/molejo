@@ -182,18 +182,20 @@ invalidates every fixture at once.
 - **Profile ordering.** Circle vertex *j* of *M* = `tessellation.profile`
   sits at angle `2*pi*j/M`, at `cos*x + sin*y` in the profile frame. A
   polygon's vertices are its declared points in order.
-- **Path sampling.** `tessellation.path` is a segment count *N*: an open
-  path has *N* + 1 rings.
+- **Path sampling.** `tessellation.path` is a segment count *N*, spent on
+  each path primitive: a chain of *k* primitives is sampled into *k*·*N*
+  segments and, open, into *R* = *k*·*N* + 1 rings (see "Chained paths"
+  below; for the single primitive of the first slice, *R* = *N* + 1).
 - **Vertex indexing.** Wall vertex `ring*M + j`, ring-major. After the
   walls come exactly two more vertices: the start-cap centre, then the
-  end-cap centre. So *V* = (*N* + 1)·*M* + 2.
+  end-cap centre. So *V* = *R*·*M* + 2.
 - **Face ordering and winding.** Walls first, ring-major then *j*, two
   triangles a quad — `(a, b, c)` then `(a, c, d)` for
   `a = ring*M + j`, `b = ring*M + (j+1) mod M`, `c = b + M`, `d = a + M`.
   Then the start-cap fan `(start_centre, (j+1) mod M, j)`, then the
   end-cap fan `(end_centre, last + j, last + (j+1) mod M)`. Winding is
   outward throughout: the start cap faces `-tangent`, the end cap
-  `+tangent`. So *F* = 2·*N*·*M* + 2·*M*.
+  `+tangent`. So *F* = 2·(*R* − 1)·*M* + 2·*M*.
 - **Output types.** Python emits float64 vertices `(V, 3)` and int32
   faces `(F, 3)`, bitwise identical for a repeated binding. JavaScript
   emits a `Float32Array` of 3·*V* positions and a `Uint32Array` of 3·*F*
@@ -209,8 +211,99 @@ Three questions the slice deliberately did not answer, because guessing
 them here would pin them by accident: how *N* is distributed across a
 multi-primitive path, how a closed loop joins its ends, and what
 `tessellation.profile` means for a polygon whose point count is already
-declared. Each raises naming itself rather than choosing; the arc batch
-settles the first two and the first polygon fixture the third.
+declared. The first is settled below; the loop and the polygon still
+raise naming themselves rather than choosing.
+
+**Chained paths, arcs, and helices.** Settled while implementing the
+curved primitives (tasks 3.1–3.4), and binding on every later one.
+
+- **`tessellation.path` is a count per primitive, not per path.** Each
+  primitive in the chain is spent *N* segments, so *k* primitives give
+  *k*·*N* segments and *k*·*N* + 1 rings. Distributing one budget across
+  the chain in proportion to arc length is not merely rejected but
+  forbidden: arc length follows parameter values, so the ring count —
+  hence the vertex count and the whole index buffer — would follow them
+  too, and fixed tessellation would be a fiction. Any distribution rule
+  must be a function of the document alone, and per-primitive is the
+  simplest such rule; it also reads identically in the single-primitive
+  case the cylinder fixture already pinned. A per-primitive override
+  (`{"type": "arc", …, "samples": 24}`) would refine this without
+  changing what an unadorned document means, so nothing here forecloses
+  it; no project has asked yet, and an unasked-for slot is a second way
+  to say the same thing.
+- **A joint's ring is sampled once, by the primitive that leaves it.**
+  The chain is continuous in position *by construction*, not by
+  validation: no primitive declares where it starts. `line` declares
+  only `to`, `arc` derives its endpoint by rotating the current point,
+  `helix` derives its endpoint from radius, turns and height. So a
+  primitive begins at the point the previous one reached, primitive *i*
+  contributes rings *i*·*N* … (*i*+1)·*N* − 1, and the last one
+  contributes the final ring as well. The frame arriving at a joint is
+  the frame the outgoing primitive transports onto its own start
+  tangent — exactly the identity when the two tangents agree, since the
+  pinned transport is exactly the identity on equal tangents. A
+  tangent-continuous chain therefore shows no seam and no twist jump at
+  a joint, which is what the quarter-bend fixture asserts at both of
+  its joints.
+- **Tangent continuity is the author's obligation.** Whether an arc
+  leaves along the tangent its predecessor arrived on depends on
+  parameter values, so no structural validator could decide it, and
+  policing continuity is already a stated non-goal. A kinked joint
+  evaluates rather than raising: the shared ring is perpendicular to the
+  outgoing tangent, so the incoming primitive's last quad is skewed. The
+  result is watertight, deterministic, and visibly wrong, which is the
+  honest outcome for a shape the author asked for.
+- **Transport along a curved primitive is incremental, ring by ring.**
+  Ring *i*'s frame is the previous ring's frame transported onto ring
+  *i*'s analytic tangent; no primitive gets a transport rule of its own.
+  For an arc this is exact rather than approximate: every tangent of a
+  circular arc lies in the plane perpendicular to its axis, so every
+  minimal rotation is about that axis, and composing them is the single
+  rotation through the total angle. For a helix the tangents trace a
+  cone and the composition genuinely depends on *N*, converging to the
+  continuous rotation-minimizing frame as *N* grows. Either way each
+  ring is perpendicular to the local tangent, which is precisely what
+  "the wire does not shear" means; what varies with *N* is the roll
+  about the tangent, invisible for a circular profile and pinned by the
+  fixtures for any profile that is not. The helix asks for no twist of
+  its own: transport onto its inclined tangent is the whole of it.
+- **`arc` rotates the current point about an axis line.** Given the
+  incoming frame's origin *p*, `center` *c*, `axis` *a* and `angle` θ,
+  with â = *a*/|*a*|, the axial part *m* = ((*p* − *c*)·â)â, the radius
+  *R* = |(*p* − *c*) − *m*|, the radial unit *u* = ((*p* − *c*) − *m*)/*R*
+  and the tangential unit *v* = â × *u*, ring *i* of *N* sits at
+  φ = *i*·θ/*N* with
+
+      centre  = c + m + R·(cos φ · u + sin φ · v)
+      tangent = sign(θ)·(cos φ · v − sin φ · u)
+
+  and the chain continues from the ring at φ = θ. The turn is
+  right-handed about â, and only the component of *p* − *c* across the
+  axis turns, so an axis line that does not pass through the plane of
+  the profile is as good as one that does. Three degeneracies are
+  refused at evaluation, naming the slot: a zero `axis` (nothing to turn
+  about), a start point on the axis line (*R* = 0, no circle to run on),
+  and a zero `angle` (an arc with no tangent, not a small arc). None is
+  a structural fault, because all three can arrive through parameters.
+- **`helix` winds about the current tangent.** Given the incoming frame
+  (*p*, *x̂*, *ŷ*, *t̂*), `radius` *r*, `turns` *T* and `height` *h*, the
+  axis is the line through *A* = *p* − *r*·*x̂* along *t̂*, and ring *i*
+  of *N* sits at *u* = *i*/*N*, φ = 2π*Tu* with
+
+      centre  = A + r·(cos φ · x̂ + sin φ · ŷ) + h·u·t̂
+      tangent = (2πTr·(−sin φ · x̂ + cos φ · ŷ) + h·t̂) / L
+      L       = sqrt((2πTr)² + h²)
+
+  So the helix starts exactly at *p*, winds right-handed about *t̂*
+  (*x̂* turning toward *ŷ*), and advances *h* over *T* turns. *L* is the
+  constant speed and hence the helix's length, so rings uniform in *u*
+  are uniform in arc length. A non-integer *T* is ordinary (a spring's
+  6.5 coils), *h* = 0 gives a circle, negative *h* advances backwards
+  and negative *T* winds left-handed; *r* ≤ 0 and a helix that goes
+  nowhere (*T* = 0 with *h* = 0) are refused naming the slot. The start
+  tangent is inclined from *t̂* by the pitch angle atan2(2π*Tr*, *h*), so
+  a spring given a straight lead-in has a real kink where it starts
+  winding: that is what a helix is, not an evaluator artefact.
 
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
@@ -252,17 +345,20 @@ represents shapes it can define analytically.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
 - The sweep frame convention is now settled for the mesh evaluators
-  (see "Sweep evaluation conventions": rotation-minimizing, identity on
-  a straight segment, deterministic axis when antiparallel). What
-  remains open is the B-rep side: which of MakePipeShell's trihedron
-  laws reproduces it, and whether the helix's own twist about the
+  (see "Sweep evaluation conventions" and "Chained paths": ring-by-ring
+  rotation-minimizing transport, identity on a straight segment,
+  deterministic axis when antiparallel, no twist of a primitive's own).
+  What remains open is the B-rep side: which of MakePipeShell's
+  trihedron laws reproduces it, and whether a helix's roll about the
   tangent is expressible there or has to be built into the path curve.
-  The arc and helix fixtures decide.
-- How `tessellation.path` is distributed across a path of several
-  primitives — proportional to arc length, per-primitive, or something
-  the author declares — and how a closed loop joins its last ring to
-  its first. The first vertical slice refuses both rather than guessing;
-  the arc batch settles them.
+  The arc and helix fixtures are now the target it must reproduce.
+- How a closed loop joins its last ring to its first: whether `loop`
+  closes the wall by wrapping the last ring onto the first (dropping the
+  duplicate ring and both caps) and what it requires of the last
+  primitive's end frame, which a rotation-minimizing transport does not
+  in general bring back to the first ring's. `loop: true` still raises
+  naming itself; the wrap batch, whose belt is the first shape that
+  needs it, settles it.
 - What `tessellation.profile` means for a polygon profile, whose vertex
   count its points already fix. The first polygon fixture decides.
 - Which OCCT binding the `brep` extra depends on (OCP is the working
