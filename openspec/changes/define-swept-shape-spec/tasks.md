@@ -50,13 +50,21 @@
 
 ## 4. Wrap and spline
 
-- [ ] 4.1 Settle the `wrap` signature against the belt validation case
+- [x] 4.1 Settle the `wrap` signature against the belt validation case
       (ordered circles, side flags, phase, open-span anchor); record
-      the decision in design.md before implementing.
-- [ ] 4.2 Red: wrap fixture — closed loop around three circles;
+      the decision in design.md before implementing. Settled with it:
+      the closed-loop join and what `tessellation.profile` means for a
+      polygon, which the belt is the first shape to need (see
+      design.md, "The wrap, its teeth, the polygon profile, and the
+      closed loop").
+- [x] 4.2 Red: wrap fixture — closed loop around three circles;
       tangency continuity; phase parameter circulates the profile
-      pattern without changing counts.
-- [ ] 4.3 Implement `wrap` in Python, then JS, to fixture parity.
+      pattern without changing counts. Two fixtures: the three-pulley
+      belt (moving idler and circulating phase) and the carriage belt
+      (the Metamaquina2 geometry, teeth anchored to a running
+      carriage).
+- [x] 4.3 Implement `wrap` in Python, then JS, to fixture parity, with
+      the polygon profile and the closed-loop join it needs.
 - [ ] 4.4 Settle the spline flavor against the loom validation case;
       record the decision in design.md.
 - [ ] 4.5 Red: spline fixture — a loom run whose end point and tangents

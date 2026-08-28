@@ -358,7 +358,12 @@ rather than invented later.
 - **Segments are spent per element, not per wrap.** A wrap of *k*
   circles is 2*k* elements, each spent *N* = `tessellation.path`
   segments, so a wrap has *R* = 2·*k*·*N* rings — a function of the
-  document alone, as the distribution rule must be. Rings are uniform
+  document alone, as the distribution rule must be. A tooth-driven
+  allocation (`samples_per_tooth` in place of `tessellation.path` on a
+  toothed wrap) would also be structural, and is not adopted: it is a
+  second way to say what the document already says, it leaves a
+  toothless wrap without a rule, and it would make the wrap the one
+  primitive whose resolution is declared somewhere else. Rings are uniform
   in arc length within an element (uniform in angle on an arc), and a
   joint's ring belongs to the element that leaves it, as in any chain.
   Segment budget never follows tooth count, span length, or a
