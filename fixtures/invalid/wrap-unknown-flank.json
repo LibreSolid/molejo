@@ -13,7 +13,8 @@
         "teeth": {"pitch": 2.5, "height": 0.7, "flank": "htd", "count": 180}
       }
     ],
-    "tessellation": {"path": 720, "profile": 8}
+    "loop": true,
+    "tessellation": {"path": 720, "profile": 4}
   },
   "must_mention": ["path[0].teeth.flank", "unknown tooth flank", "htd"]
 }

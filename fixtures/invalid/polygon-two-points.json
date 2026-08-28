@@ -4,7 +4,7 @@
     "molejo": 1,
     "profile": {"type": "polygon", "points": [[0.0, 0.0], [1.0, 0.0]]},
     "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
-    "tessellation": {"path": 32, "profile": 16}
+    "tessellation": {"path": 32, "profile": 2}
   },
   "must_mention": ["profile.points", "polygon", "at least 3 points"]
 }

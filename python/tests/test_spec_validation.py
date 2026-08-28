@@ -42,6 +42,21 @@ def test_loop_is_optional_and_defaults_to_false(spring_document):
         },
         {"type": "helix", "radius": 14.0, "turns": 6.5, "height": 46.8},
         {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]},
+    ],
+    ids=["line", "line-params", "arc", "helix", "spline"],
+)
+def test_every_v1_primitive_validates(spring_document, primitive):
+    spring_document["path"] = [primitive]
+    assert validate(spring_document) is None
+
+
+# A wrap is a closed loop and the only primitive of its path, so it can
+# only be validated in a document that says so.
+
+
+@pytest.mark.parametrize(
+    "primitive",
+    [
         {
             "type": "wrap",
             "around": [
@@ -68,16 +83,85 @@ def test_loop_is_optional_and_defaults_to_false(spring_document):
             "around": [
                 {"center": [0.0, 0.0], "radius": 5.1},
                 {"center": [0.0, 210.0], "radius": 5.1},
-                {"center": [80.0, 105.0], "radius": 3.0},
+                {"center": [80.0, {"param": "idler"}], "radius": 3.0},
             ],
             "phase": {"param": "travel"},
         },
     ],
-    ids=["line", "line-params", "arc", "helix", "spline", "wrap", "wrap-teeth", "wrap-phase"],
+    ids=["wrap", "wrap-teeth", "wrap-phase"],
 )
-def test_every_v1_primitive_validates(spring_document, primitive):
+def test_every_wrap_validates_in_a_looped_document(spring_document, primitive):
     spring_document["path"] = [primitive]
+    spring_document["loop"] = True
     assert validate(spring_document) is None
+
+
+def test_a_wrap_must_be_the_only_primitive_in_its_path(spring_document):
+    spring_document["loop"] = True
+    spring_document["path"] = [
+        {"type": "line", "to": [0.0, 0.0, 10.0]},
+        {
+            "type": "wrap",
+            "around": [
+                {"center": [0.0, 0.0], "radius": 5.1},
+                {"center": [0.0, 210.0], "radius": 5.1},
+            ],
+        },
+    ]
+    with pytest.raises(SpecError) as caught:
+        validate(spring_document)
+    assert "path[1]" in str(caught.value)
+    assert "only primitive" in str(caught.value)
+
+
+def test_a_wrap_document_must_declare_its_loop(spring_document):
+    spring_document["path"] = [
+        {
+            "type": "wrap",
+            "around": [
+                {"center": [0.0, 0.0], "radius": 5.1},
+                {"center": [0.0, 210.0], "radius": 5.1},
+            ],
+        }
+    ]
+    with pytest.raises(SpecError, match="loop"):
+        validate(spring_document)
+
+
+def test_a_wrap_takes_an_anchor_or_a_phase_and_not_both(spring_document):
+    spring_document["loop"] = True
+    spring_document["path"] = [
+        {
+            "type": "wrap",
+            "around": [
+                {"center": [0.0, 0.0], "radius": 5.1},
+                {"center": [0.0, 210.0], "radius": 5.1},
+            ],
+            "anchor": {"span": 0, "at": 40.0},
+            "phase": 1.0,
+        }
+    ]
+    with pytest.raises(SpecError) as caught:
+        validate(spring_document)
+    assert "path[0]" in str(caught.value)
+    assert "anchor" in str(caught.value) and "phase" in str(caught.value)
+
+
+@pytest.mark.parametrize("span", [2, 7], ids=["just-past", "far-past"])
+def test_an_anchor_span_must_be_one_the_wrap_has(spring_document, span):
+    spring_document["loop"] = True
+    spring_document["path"] = [
+        {
+            "type": "wrap",
+            "around": [
+                {"center": [0.0, 0.0], "radius": 5.1},
+                {"center": [0.0, 210.0], "radius": 5.1},
+            ],
+            "anchor": {"span": span, "at": 40.0},
+        }
+    ]
+    with pytest.raises(SpecError, match=r"path\[0\]\.anchor\.span"):
+        validate(spring_document)
 
 
 @pytest.mark.parametrize(
@@ -91,7 +175,22 @@ def test_every_v1_primitive_validates(spring_document, primitive):
 )
 def test_every_v1_profile_validates(spring_document, profile):
     spring_document["profile"] = profile
+    if profile["type"] == "polygon":
+        # A polygon is sampled at its own points, no more and no fewer.
+        spring_document["tessellation"]["profile"] = len(profile["points"])
     assert validate(spring_document) is None
+
+
+def test_a_polygon_is_sampled_at_its_own_points(spring_document):
+    spring_document["profile"] = {
+        "type": "polygon",
+        "points": [[-1.0, 0.0], [1.0, 0.0], [0.0, 1.5]],
+    }
+    spring_document["tessellation"]["profile"] = 16
+    with pytest.raises(SpecError) as caught:
+        validate(spring_document)
+    assert "tessellation.profile" in str(caught.value)
+    assert "3" in str(caught.value)
 
 
 def test_a_document_that_is_not_an_object_is_rejected():
@@ -109,6 +208,7 @@ def test_parameter_names_collects_every_reference():
     document = dict(
         SPRING_DOCUMENT,
         profile={"type": "polygon", "points": [[{"param": "w"}, 0.0], [1.0, 0.0], [0.0, {"param": "h"}]]},
+        tessellation={"path": 240, "profile": 3},
         path=[
             {"type": "line", "to": [0.0, {"param": "y"}, 0.0]},
             {

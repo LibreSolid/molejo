@@ -103,6 +103,20 @@ def test_every_constructor_round_trips():
             Arc(center=(0.0, 0.0, 0.0), axis=(0.0, 0.0, 1.0), angle=P.sweep),
             Helix(radius=14.0, turns=6.5, height=46.8),
             Spline(points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0), (P.x, P.y, P.z)]),
+        ],
+        path_samples=720,
+        profile_samples=4,
+    )
+    document = shape.to_dict()
+    assert Shape.from_dict(document).to_dict() == document
+
+
+def test_a_wrap_round_trips():
+    # A wrap owns its whole path and closes it, so it is authored in a
+    # looped shape of its own.
+    shape = Shape(
+        profile=Polygon(points=[(-0.4, -3.0), (0.9, -3.0), (0.9, 3.0), (-0.4, 3.0)]),
+        path=[
             Wrap(
                 around=[
                     dict(center=(0.0, 0.0), radius=5.1),
@@ -110,14 +124,15 @@ def test_every_constructor_round_trips():
                 ],
                 teeth=Teeth(pitch=2.5, height=0.7, flank="trapezoid", count=180),
                 anchor=dict(span=0, at=P.y),
-            ),
+            )
         ],
         path_samples=720,
-        profile_samples=8,
+        profile_samples=4,
+        loop=True,
     )
     document = shape.to_dict()
     assert Shape.from_dict(document).to_dict() == document
-    assert document["path"][4] == {
+    assert document["path"][0] == {
         "type": "wrap",
         "around": [
             {"center": [0.0, 0.0], "radius": 5.1},
@@ -126,6 +141,7 @@ def test_every_constructor_round_trips():
         "teeth": {"pitch": 2.5, "height": 0.7, "flank": "trapezoid", "count": 180},
         "anchor": {"span": 0, "at": {"param": "y"}},
     }
+    assert document["loop"] is True
 
 
 def test_a_closed_toothed_belt_carries_a_phase():

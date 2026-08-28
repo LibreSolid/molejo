@@ -1,0 +1,21 @@
+{
+  "name": "anchor on a span the wrap does not have",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "polygon", "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]},
+    "path": [
+      {
+        "type": "wrap",
+        "around": [
+          {"center": [0.0, 0.0], "radius": 5.1},
+          {"center": [0.0, 210.0], "radius": 5.1}
+        ],
+        "teeth": {"pitch": 2.5, "height": 0.7, "flank": "trapezoid", "count": 180},
+        "anchor": {"span": 2, "at": 40.0}
+      }
+    ],
+    "loop": true,
+    "tessellation": {"path": 720, "profile": 4}
+  },
+  "must_mention": ["path[0].anchor.span", "2 spans"]
+}

@@ -401,41 +401,31 @@ def test_a_non_positive_radius_is_refused():
 # --- what this batch does not evaluate yet ---------------------------------
 
 
-@pytest.mark.parametrize(
-    "primitive",
-    [
-        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]},
-        {
-            "type": "wrap",
-            "around": [
-                {"center": [0.0, 0.0], "radius": 5.1},
-                {"center": [0.0, 210.0], "radius": 5.1},
-            ],
-        },
-    ],
-    ids=["spline", "wrap"],
-)
-def test_an_unimplemented_primitive_names_itself(primitive):
+def test_an_unimplemented_primitive_names_itself():
     document = cylinder()
-    document["path"] = [primitive]
+    document["path"] = [
+        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
+    ]
     with pytest.raises(NotImplementedError) as caught:
         molejo.evaluate(document)
     message = str(caught.value)
-    assert primitive["type"] in message
+    assert "spline" in message
     assert "path[0]" in message
     assert "not implemented" in message
 
 
-def test_an_unimplemented_profile_names_itself():
+def test_an_unimplemented_message_names_what_this_build_does_evaluate():
     document = cylinder()
-    document["profile"] = {"type": "polygon", "points": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]}
+    document["path"] = [
+        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
+    ]
     with pytest.raises(NotImplementedError) as caught:
         molejo.evaluate(document)
-    assert "polygon" in str(caught.value)
-    assert "profile" in str(caught.value)
+    for name in ("line", "arc", "helix", "wrap"):
+        assert f"'{name}'" in str(caught.value)
 
 
-def test_a_closed_loop_is_not_evaluated_yet():
+def test_a_closed_loop_of_a_chain_is_not_evaluated_yet():
     document = cylinder()
     document["loop"] = True
     with pytest.raises(NotImplementedError, match="loop"):

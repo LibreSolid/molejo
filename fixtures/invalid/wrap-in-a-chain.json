@@ -1,0 +1,20 @@
+{
+  "name": "wrap sharing its path with another primitive",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "polygon", "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]},
+    "path": [
+      {"type": "line", "to": [0.0, 0.0, 10.0]},
+      {
+        "type": "wrap",
+        "around": [
+          {"center": [0.0, 0.0], "radius": 5.1},
+          {"center": [0.0, 210.0], "radius": 5.1}
+        ]
+      }
+    ],
+    "loop": true,
+    "tessellation": {"path": 48, "profile": 4}
+  },
+  "must_mention": ["path[1]", "wrap", "only primitive"]
+}

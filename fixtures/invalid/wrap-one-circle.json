@@ -4,6 +4,7 @@
     "molejo": 1,
     "profile": {"type": "circle", "radius": 1.0},
     "path": [{"type": "wrap", "around": [{"center": [0.0, 0.0], "radius": 5.1}]}],
+    "loop": true,
     "tessellation": {"path": 180, "profile": 8}
   },
   "must_mention": ["path[0].around", "wrap", "at least 2 circles"]

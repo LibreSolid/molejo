@@ -1,0 +1,19 @@
+{
+  "name": "wrap in a document that does not declare its loop",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "polygon", "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]},
+    "path": [
+      {
+        "type": "wrap",
+        "around": [
+          {"center": [0.0, 0.0], "radius": 5.1},
+          {"center": [0.0, 210.0], "radius": 5.1}
+        ]
+      }
+    ],
+    "loop": false,
+    "tessellation": {"path": 48, "profile": 4}
+  },
+  "must_mention": ["loop", "wrap", "closed loop"]
+}

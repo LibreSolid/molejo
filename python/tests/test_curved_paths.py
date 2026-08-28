@@ -651,21 +651,8 @@ def test_a_dangling_parameter_in_a_later_primitive_names_that_slot():
 # --- what this batch still does not evaluate -------------------------------
 
 
-@pytest.mark.parametrize(
-    "primitive",
-    [
-        {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]},
-        {
-            "type": "wrap",
-            "around": [
-                {"center": [0.0, 0.0], "radius": 5.1},
-                {"center": [0.0, 210.0], "radius": 5.1},
-            ],
-        },
-    ],
-    ids=["spline", "wrap"],
-)
-def test_an_unimplemented_primitive_in_a_chain_names_its_position(primitive):
+def test_an_unimplemented_primitive_in_a_chain_names_its_position():
+    primitive = {"type": "spline", "points": [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]}
     document = bend()
     document["path"][2] = primitive
     with pytest.raises(NotImplementedError) as caught:

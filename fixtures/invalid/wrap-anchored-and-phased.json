@@ -1,0 +1,22 @@
+{
+  "name": "wrap carrying both an anchor and a phase",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "polygon", "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]},
+    "path": [
+      {
+        "type": "wrap",
+        "around": [
+          {"center": [0.0, 0.0], "radius": 5.1},
+          {"center": [0.0, 210.0], "radius": 5.1}
+        ],
+        "teeth": {"pitch": 2.5, "height": 0.7, "flank": "trapezoid", "count": 180},
+        "anchor": {"span": 0, "at": {"param": "y"}},
+        "phase": {"param": "travel"}
+      }
+    ],
+    "loop": true,
+    "tessellation": {"path": 720, "profile": 4}
+  },
+  "must_mention": ["path[0]", "anchor", "phase"]
+}
