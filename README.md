@@ -105,6 +105,14 @@ teeth circulate with a parameter and a filament loom whose head follows
 three. What remains raises naming itself: closing a loop that is not a
 wrap. See `openspec/changes/`.
 
+The B-rep evaluator installs with `pip install molejo[brep]` and
+evaluates the same documents to closed OCCT solids —
+`molejo.brep.evaluate(spec, values)` or `shape.brep(**values)` — with the
+same refusals, word for word, as the mesh evaluator. Every parity fixture
+is checked through it on volume and area. An install without the extra
+imports and meshes and exports STL exactly as before; asking it for a
+solid raises naming the extra.
+
 Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
 is reserved for this project.
 

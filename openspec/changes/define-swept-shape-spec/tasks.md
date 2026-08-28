@@ -96,22 +96,36 @@
 
 ## 6. B-rep evaluator (exact shapes)
 
-- [ ] 6.1 Red: with the `brep` extra installed, the cylinder spec
+- [x] 6.1 Red: with the `brep` extra installed, the cylinder spec
       evaluates to a single closed solid whose volume matches the
       analytic volume; without the extra, invoking the B-rep evaluator
-      raises naming the extra and mesh evaluation still works.
-- [ ] 6.2 Implement profile wires, line/arc path edges, the pipe-shell
+      raises naming the extra and mesh evaluation still works. The
+      absence is simulated with an import hook, because a checkout that
+      has the extra would otherwise never test the boundary.
+- [x] 6.2 Implement profile wires, line/arc path edges, the pipe-shell
       sweep with the pinned frame convention, and caps; assert
-      line/arc sweeps yield analytic surfaces only.
-- [ ] 6.3 Red: helix and spline sweeps produce closed solids agreeing
+      line/arc sweeps yield analytic surfaces only. Settled with it: the
+      OCCT binding (OCP, as the `brep` extra), the trihedron law
+      (corrected Frenet) and its honest limits, and the belt as a prism
+      rather than a sweep -- the one construction that can carry teeth,
+      exact but for the Archimedean spiral a ramp traces where it
+      crosses an arc (see design.md, "The OCCT binding, the trihedron
+      law, and what a belt's teeth cost").
+- [x] 6.3 Red: helix and spline sweeps produce closed solids agreeing
       with their mesh fixtures on volume and area within fixture
       tolerance, with the approximation tolerance declared on the
       result.
-- [ ] 6.4 Implement helix (curve-on-cylinder) and spline (B-spline
-      curve) path construction.
-- [ ] 6.5 Property-parity pass: the parity suite checks every
+- [x] 6.4 Implement helix (curve-on-cylinder) and spline (B-spline
+      curve) path construction. The spline is one degree-3 B-spline with
+      double interior knots and 2n+2 poles, not a Bezier chain, so the
+      kernel carries the C1 continuity the curve actually has.
+- [x] 6.5 Property-parity pass: the parity suite checks every
       fixture's expected-mesh volume and area against the B-rep
-      evaluation when the extra is installed.
+      evaluation when the extra is installed. The fixture format grows a
+      per-fixture `brep` property tolerance, because a faceted mesh
+      understates the smooth solid it samples and the coordinate
+      tolerances say nothing about that; the gap is asserted one-sided
+      and the same solid is held to an independent closed form at 1e-6.
 
 ## 7. Distribution
 

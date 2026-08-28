@@ -22,9 +22,19 @@ into a deterministic triangle mesh.
     mesh.to_stl()             # binary STL bytes
 
 Spec version 1 is defined in :mod:`molejo.spec` and evaluated in
-:mod:`molejo.evaluator`, which currently sweeps a circle profile along a
-single line; every other primitive raises naming itself. See the
-repository's openspec/ records.
+:mod:`molejo.evaluator`, which sweeps a circle or polygon profile along
+the whole v1 path vocabulary -- ``line``, ``arc``, ``helix``, ``spline``
+and ``wrap`` -- open or closed into a loop.
+
+:mod:`molejo.brep` evaluates the same documents exactly, to closed OCCT
+solids, for a consumer whose testing architecture asserts on exact
+shapes::
+
+    tube.brep(length=46.8).volume()
+
+It needs the ``brep`` extra (``pip install molejo[brep]``) and is
+imported only when asked for, so a plain install meshes and exports STL
+on numpy alone. See the repository's openspec/ records.
 """
 
 from .authoring import (

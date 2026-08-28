@@ -578,6 +578,121 @@ runtimes.
   *surface* stays the tolerance-declared approximation recorded above,
   as it is for the helix.
 
+**The OCCT binding, the trihedron law, and what a belt's teeth cost.**
+Settled while implementing the B-rep evaluator (tasks 6.1–6.5). This is
+where "B-rep compatibility is a vocabulary admission rule" stops being a
+promise: every v1 primitive now has its exact construction, and the two
+places exactness genuinely runs out are named rather than glossed.
+
+- **The binding is OCP** (`cadquery-ocp`), matching the originating
+  consumer's stack, as the `brep` extra of the Python package. `molejo`
+  itself depends on numpy alone; `molejo/_occt.py` is the only module
+  that imports OCCT and it is imported on first use, so importing molejo,
+  evaluating a mesh, or exporting STL never touches a CAD kernel. Asking
+  for a solid without the extra raises an `ImportError` naming it, so a
+  consumer that would rather fall back to a mesh can catch it as the
+  ordinary missing-dependency failure it is. That boundary is tested in a
+  checkout that *has* the extra, by hiding `OCP` behind an import hook:
+  testing it only where OCCT happens to be missing would mean never
+  testing it.
+- **The trihedron law is corrected Frenet** — `MakePipeShell.SetMode(False)`
+  — which is the Frenet trihedron with its torsion twist removed and so
+  reproduces the pinned no-twist transport. Plain Frenet is rejected: it
+  rolls with the curve's torsion, which a helix has everywhere. The
+  honest limits, stated because a law is only as good as what observes
+  it: for a circular profile the roll about the tangent does not change
+  the solid at all, and every v1 sweep that carries a circle is therefore
+  insensitive to the choice; the one non-circular profile in v1 is the
+  belt's, which does not sweep at all (below). Where the mesh's frame is
+  the discrete *N*-step composition and the B-rep's is the continuous
+  law, the two agree exactly after a line or an arc — every minimal
+  rotation there is about one fixed axis — and converge as *N* grows
+  after a helix or a spline. So a *helix following a curved primitive*
+  would wind from a slightly different *x̂* in the two evaluators; no v1
+  fixture does, and the difference is invisible for a circular profile.
+  Making the B-rep match the mesh's discrete composition instead would
+  make an exact evaluation depend on `tessellation.path`, which is
+  exactly the confusion the representation exists to avoid.
+- **The spline's B-form is double interior knots and 2*n*+2 poles.** Span
+  *i* is the Bézier with poles *P_i*, *P_i* + *m_i*/3, *P*_{*i*+1} −
+  *m*_{*i*+1}/3, *P*_{*i*+1}, as recorded above; because consecutive
+  spans share *m* at the point between them the chain is already C1, so
+  the B-form needs only multiplicity 2, and its poles are the pair
+  *P_i* ∓ *m_i*/3 straddling every interior point with *P*₀ and *P*ₙ
+  themselves at the clamped ends. A Bézier chain — multiplicity 3, 3*n*+1
+  poles — describes the identical curve and is rejected: it would declare
+  C0 continuity where the geometry is C1, so the kernel would carry a
+  weaker claim than the document makes. The poles come from the mesh
+  evaluator's own tangent assembly, so the two evaluators cannot disagree
+  about which curve a document names; the B-spline reproduces the closed
+  form to 6e-14.
+- **A belt is a prism, not a sweep.** A wrap's profile has local *y* =
+  world +Z at every station, so a belt of rectangular section is exactly
+  the region between the trace of its inner face and the trace of its
+  outer one, extruded by the section's width. That is chosen over a pipe
+  sweep for two reasons and not merely for elegance: it is the only
+  construction that can carry **teeth** at all, because a sweep has a
+  constant section by definition; and it keeps the whole belt analytic
+  where the geometry is — the outer trace never carries teeth, and on the
+  inner one a tooth flank crossing a straight span is still a straight
+  line, while a crest or a root crossing an arc is still a circular arc.
+  A toothless wrap of any profile still sweeps, and a circular one comes
+  back as cylinders and toroidal patches with tolerance zero, which is
+  the delta spec's own scenario.
+- **A tooth ramp crossing an arc is an Archimedean spiral, and that is
+  the one thing in a belt that is approximated.** The modulation is
+  linear in arc length and arc length is proportional to angle, so on an
+  arc the inner trace is *r* = *a* + *b*θ, which no NURBS holds exactly.
+  That piece alone is interpolated — a C2 cubic through points on the
+  spiral, so it meets both neighbours exactly and the wire still closes —
+  and that piece alone makes a toothed belt declare a tolerance. Rejected
+  alternatives: replacing the ramp with its chord is exact geometry but a
+  *different shape*, silently flattening a flank the document asked to be
+  linear in arc length; and making the ramp linear in angle instead would
+  contradict the pinned mesh convention and break parity. Measured, the
+  interpolated ramp departs from the true spiral by 2.7e-8 on the
+  carriage belt and 4.9e-8 on the three-pulley belt, against a declared
+  1e-6. Both fixtures exercise the nuance at every binding — the
+  Metamaquina2 belt's arcs are 16 mm of a 452 mm loop and a ramp lands on
+  one at both carriage positions — and a belt whose ramps all fall on
+  spans declares tolerance zero, which the suite exercises too. The prism
+  needs a rectangular section; a toothed belt on any other raises naming
+  it, because only a rectangle extrudes the same way at every station.
+- **The exactness declaration is checked, not asserted.** A result
+  carries `tolerance` = 0.0 or the declared approximation tolerance, and
+  a zero is verified against the surface classes the solid actually
+  carries before it is returned. "The evaluator SHALL NOT degrade an
+  analytically representable sweep" is thereby a property of the code
+  rather than of the author's care.
+- **The result surface is small and says what it is.**
+  `molejo.brep.evaluate(document, values)` returns a `BrepResult` with
+  `.solid` (a closed `TopoDS_Solid`), `.tolerance`, `.volume()`,
+  `.area()`, `.surfaces()` — each face's class as a plain name, so a
+  consumer can check exactness without importing OCCT — and
+  `.is_closed()`. `shape.brep(**values)` is the authoring-layer twin of
+  `shape.evaluate(**values)`. Both evaluators resolve parameters and
+  refuse degeneracies through the same code, so a dangling parameter, a
+  non-numeric value, a line that goes nowhere or a wrap with no external
+  tangent read character for character alike. Volume and area are
+  integrated adaptively to a relative 1e-9: OCCT's default fixed-order
+  Gauss integration of a swept B-spline face loses four digits of a
+  tube's volume, which would make every property assertion a statement
+  about the integrator rather than about the shape.
+- **Property parity is per fixture, one-sided, and kept honest by a
+  closed form.** A faceted mesh is inscribed in the smooth solid it
+  samples, so the fixtures' coordinate tolerances are meaningless here: a
+  circle profile of *M* vertices encloses (M/2π)·sin(2π/M) of its circle,
+  4.5% short at *M* = 12 and 17% at *M* = 6. Each fixture therefore
+  declares its own relative `brep` property tolerance, measured with
+  about 30% of headroom, and the suite fails a fixture whose declared
+  tolerance exceeds twice its measured margin. Alone that would be a weak
+  claim, so it keeps company: the gap must run one way (the exact solid
+  is the larger), and the same solid must match an independent closed
+  form — the tube volume π*a*²*L*, or for a belt the Green's-theorem area
+  between its two traces — to 1e-6, five orders tighter, and be nearer it
+  than the facets are. That is what "the B-rep is nearer truth" means as
+  an assertion rather than a slogan.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 
@@ -622,16 +737,16 @@ represents shapes it can define analytically.
   run that bunches its waypoints decides.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
-- The sweep frame convention is now settled for the mesh evaluators
-  (see "Sweep evaluation conventions" and "Chained paths": ring-by-ring
-  rotation-minimizing transport, identity on a straight segment,
-  deterministic axis when antiparallel, no twist of a primitive's own).
-  What remains open is the B-rep side: which of MakePipeShell's
-  trihedron laws reproduces it, and whether a helix's roll about the
-  tangent is expressible there or has to be built into the path curve.
-  The arc and helix fixtures are now the target it must reproduce, and
-  a wrap gives it the easy half: the loop decomposes into exact line
-  and arc edges in the world XY plane.
+- B-rep residuals, now that "The OCCT binding" above settles the
+  binding, the trihedron law, the spline's B-form, the belt prism and
+  the spiral ramp: a toothed belt of non-rectangular section, which the
+  prism cannot extrude and no project has asked for; and the roll a
+  *swept* non-circular profile would carry, where the corrected-Frenet
+  law is the continuous limit of the mesh's discrete composition rather
+  than the same number. Neither is observable in v1 — the only
+  non-circular profile is the belt's, and a belt does not sweep — so
+  neither is chosen early. A project sweeping a keyed or rectangular
+  section along a helix decides the second.
 - How a closed loop joins its last ring to its first is settled for a
   wrap (see "The wrap": no duplicate ring, no caps, *V* = *R*·*M*), and
   the wrap's planar path is what makes its end frame come back to its
@@ -639,5 +754,3 @@ represents shapes it can define analytically.
   which needs an answer to the frame that does not come back — turn the
   residual roll out over the loop, refuse a chain that does not close,
   or let the seam show. It raises naming itself until a shape needs it.
-- Which OCCT binding the `brep` extra depends on (OCP is the working
-  assumption, matching the originating consumer's stack).
