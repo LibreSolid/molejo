@@ -221,6 +221,32 @@ def belt_vertices(circles, section, segments, teeth=None, origin=0.0):
     return vertices
 
 
+def belt_rings(mesh, profile):
+    """The wall vertices as ``(R, M, 3)``.
+
+    ``test_curved_paths.rings_of`` drops the two cap centres an open
+    sweep ends with; a closed loop has none, so every vertex is a wall
+    vertex.
+    """
+    return mesh.vertices.reshape(-1, profile, 3)
+
+
+def belt_centres(mesh, section=SECTION):
+    """The ring centres of a smooth belt, recovered from its two faces.
+
+    The section is deliberately not centred on the path -- a belt's is
+    not -- so the mean of a ring is not its centre. Its inner face sits
+    at ``centre + inner*n`` and its outer at ``centre + outer*n``, and
+    those two eliminate the unknown normal.
+    """
+    points = np.asarray(section, dtype=np.float64)
+    rings = belt_rings(mesh, len(points))
+    inner, outer = points[:, 0].min(), points[:, 0].max()
+    inner_face = rings[:, points[:, 0] == inner].mean(axis=1)
+    outer_face = rings[:, points[:, 0] == outer].mean(axis=1)
+    return (outer * inner_face - inner * outer_face) / (outer - inner)
+
+
 def shoelace(points):
     """The signed area of a closed polygon, by the surveyor's formula."""
     points = np.asarray(points, dtype=np.float64)
@@ -241,7 +267,7 @@ def prism_between_traces(mesh, section, inner=0, outer=1):
     """
     points = np.asarray(section, dtype=np.float64)
     width = points[:, 1].max() - points[:, 1].min()
-    rings = rings_of(mesh, len(points))
+    rings = belt_rings(mesh, len(points))
     return width * (
         abs(shoelace(rings[:, outer, :2])) - abs(shoelace(rings[:, inner, :2]))
     )
@@ -334,7 +360,7 @@ def test_the_last_ring_wraps_onto_the_first():
 
 def test_the_loop_leaves_no_duplicate_ring():
     mesh = molejo.evaluate(belt(path=8))
-    centres = rings_of(mesh, 4).mean(axis=1)
+    centres = belt_centres(mesh)
     steps = np.linalg.norm(np.diff(np.vstack([centres, centres[:1]]), axis=0), axis=1)
     assert (steps > 1e-9).all(), "a duplicated ring would leave a zero step"
 
@@ -368,21 +394,21 @@ def test_every_ring_sits_where_the_closed_form_says(circles):
     segments = 7
     mesh = molejo.evaluate(belt(circles=circles, path=segments))
     centres, _, _ = wrap_rings(circles, segments)
-    assert rings_of(mesh, 4).mean(axis=1) == pytest.approx(centres, abs=1e-12)
+    assert belt_centres(mesh) == pytest.approx(centres, abs=1e-12)
 
 
 @pytest.mark.parametrize("circles", [CARRIAGE, PULLEYS], ids=["two", "three"])
 def test_every_wall_vertex_is_the_closed_form_vertex(circles):
     segments = 7
     mesh = molejo.evaluate(belt(circles=circles, path=segments))
-    assert rings_of(mesh, 4) == pytest.approx(
+    assert belt_rings(mesh, 4) == pytest.approx(
         belt_vertices(circles, SECTION, segments), abs=1e-12
     )
 
 
 def test_the_belt_starts_where_it_leaves_the_first_circle():
     mesh = molejo.evaluate(belt(circles=PULLEYS, path=5))
-    centre = rings_of(mesh, 4).mean(axis=1)[0]
+    centre = belt_centres(mesh)[0]
     first = np.array(PULLEYS[0][:2]) + PULLEYS[0][2] * outward_normal(
         PULLEYS[0], PULLEYS[1]
     )
@@ -392,7 +418,7 @@ def test_the_belt_starts_where_it_leaves_the_first_circle():
 def test_the_belt_rides_each_circle_at_its_pitch_radius():
     segments = 6
     mesh = molejo.evaluate(belt(circles=PULLEYS, path=segments))
-    centres = rings_of(mesh, 4).mean(axis=1)
+    centres = belt_centres(mesh)
     # Element 2i+1 is the arc about circle i+1: its rings sit at exactly
     # that circle's radius from its centre.
     for index in range(len(PULLEYS)):
@@ -405,7 +431,7 @@ def test_the_belt_rides_each_circle_at_its_pitch_radius():
 def test_every_span_is_tangent_to_the_two_circles_it_joins():
     segments = 6
     mesh = molejo.evaluate(belt(circles=PULLEYS, path=segments))
-    centres = rings_of(mesh, 4).mean(axis=1)
+    centres = belt_centres(mesh)
     for index in range(len(PULLEYS)):
         span = centres[2 * index * segments : (2 * index + 1) * segments]
         direction = span[-1] - span[0]
@@ -427,7 +453,7 @@ def test_the_belt_lies_flat_in_the_world_plane():
 def test_the_belt_turns_clockwise_through_exactly_one_full_turn():
     segments = 9
     mesh = molejo.evaluate(belt(circles=PULLEYS, path=segments))
-    centres = rings_of(mesh, 4).mean(axis=1)[:, :2]
+    centres = belt_centres(mesh)[:, :2]
     chords = np.diff(np.vstack([centres, centres[:1]]), axis=0)
     angles = np.arctan2(chords[:, 1], chords[:, 0])
     turns = np.diff(np.concatenate([angles, angles[:1]]))
@@ -442,7 +468,7 @@ def test_the_loop_length_is_the_closed_form_length():
     )
     segments = 64
     mesh = molejo.evaluate(belt(path=segments))
-    centres = rings_of(mesh, 4).mean(axis=1)
+    centres = belt_centres(mesh)
     chords = np.linalg.norm(
         np.diff(np.vstack([centres, centres[:1]]), axis=0), axis=1
     )
@@ -457,7 +483,7 @@ def test_the_frame_comes_back_to_the_start_without_twist():
     segments = 8
     circles = PULLEYS
     mesh = molejo.evaluate(belt(circles=circles, path=segments))
-    rings = rings_of(mesh, 4)
+    rings = belt_rings(mesh, 4)
     _, normals, _ = wrap_rings(circles, segments)
 
     # Ring 0's frame: outward normal and world +Z.
@@ -486,8 +512,8 @@ def test_teeth_move_the_inner_face_and_nothing_else():
     segments = 8
     plain = molejo.evaluate(belt(circles=PULLEYS, path=segments))
     geared = molejo.evaluate(belt(circles=PULLEYS, path=segments, teeth=toothed()))
-    smooth = rings_of(plain, 4)
-    ridged = rings_of(geared, 4)
+    smooth = belt_rings(plain, 4)
+    ridged = belt_rings(geared, 4)
     # The section's outer vertices are points 1 and 2; the inner face is
     # every vertex at the minimum local x, here points 0 and 3.
     assert ridged[:, 1] == pytest.approx(smooth[:, 1], abs=1e-12)
@@ -501,7 +527,7 @@ def test_the_tooth_pattern_is_the_declared_trapezoid():
     segments, teeth = 10, toothed(count=6, height=0.5)
     circles = PULLEYS
     mesh = molejo.evaluate(belt(circles=circles, path=segments, teeth=teeth))
-    assert rings_of(mesh, 4) == pytest.approx(
+    assert belt_rings(mesh, 4) == pytest.approx(
         belt_vertices(circles, SECTION, segments, teeth=teeth), abs=1e-12
     )
 
@@ -512,7 +538,7 @@ def test_a_crest_sits_on_the_pattern_origin():
     segments, teeth = 12, toothed(count=4, height=0.5)
     plain = molejo.evaluate(belt(circles=PULLEYS, path=segments))
     geared = molejo.evaluate(belt(circles=PULLEYS, path=segments, teeth=teeth))
-    moved = rings_of(plain, 4)[0, 0] - rings_of(geared, 4)[0, 0]
+    moved = belt_rings(plain, 4)[0, 0] - belt_rings(geared, 4)[0, 0]
     assert float(np.linalg.norm(moved)) == pytest.approx(0.5, abs=1e-12)
 
 
@@ -542,7 +568,7 @@ def test_a_phase_circulates_the_pattern_without_changing_counts():
     # The pattern moved along the belt, so the same vertex index is at a
     # different point of the tooth, but the loop encloses the same volume
     # to within the sampling.
-    assert rings_of(running, 4) == pytest.approx(
+    assert belt_rings(running, 4) == pytest.approx(
         belt_vertices(
             PULLEYS, SECTION, segments, teeth=teeth, origin=3.1
         ),
@@ -563,7 +589,7 @@ def test_an_anchor_puts_the_pattern_origin_on_its_span():
         ),
         {"y": 4.5},
     )
-    assert rings_of(anchored, 4) == pytest.approx(
+    assert belt_rings(anchored, 4) == pytest.approx(
         belt_vertices(PULLEYS, SECTION, segments, teeth=teeth, origin=4.5), abs=1e-12
     )
 
@@ -580,7 +606,7 @@ def test_an_anchor_on_a_later_span_starts_from_that_span():
             anchor={"span": 1, "at": 2.0},
         )
     )
-    assert rings_of(mesh, 4) == pytest.approx(
+    assert belt_rings(mesh, 4) == pytest.approx(
         belt_vertices(PULLEYS, SECTION, segments, teeth=teeth, origin=start + 2.0),
         abs=1e-12,
     )
@@ -614,7 +640,7 @@ def test_a_moving_idler_changes_the_tooth_pitch_and_not_the_count():
     for idler in (40.0, 52.0):
         circles = [(0.0, 0.0, 8.0), (30.0, idler, 3.0), (60.0, 0.0, 5.0)]
         mesh = molejo.evaluate(document, {"idler": idler})
-        assert rings_of(mesh, 4) == pytest.approx(
+        assert belt_rings(mesh, 4) == pytest.approx(
             belt_vertices(circles, SECTION, segments, teeth=teeth), abs=1e-12
         )
     # The two loops are different lengths, so the pitch length differs
@@ -631,13 +657,15 @@ def test_the_tooth_pattern_closes_at_the_seam():
     # the displacement the mesh actually carries steps no further from
     # the last ring to ring 0 than the ramp can rise in one sampling step.
     segments, teeth = 24, toothed(count=6, height=0.5)
-    plain = rings_of(molejo.evaluate(belt(circles=PULLEYS, path=segments)), 4)
-    geared = rings_of(
+    plain = belt_rings(molejo.evaluate(belt(circles=PULLEYS, path=segments)), 4)
+    geared = belt_rings(
         molejo.evaluate(belt(circles=PULLEYS, path=segments, teeth=teeth)), 4
     )
     offsets = np.linalg.norm(plain[:, 0] - geared[:, 0], axis=1)
     period = loop_length(PULLEYS) / teeth["count"]
-    step = loop_length(PULLEYS) / (2 * len(PULLEYS) * segments)
+    # Segments are spent per element, so the longest element takes the
+    # longest steps in arc length.
+    step = max(item["length"] for item in elements(PULLEYS)) / segments
     # The ramp rises the whole height over a quarter period.
     slope = teeth["height"] / (0.25 * period)
     steps = np.abs(np.diff(np.concatenate([offsets, offsets[:1]])))
@@ -667,9 +695,13 @@ def test_a_toothed_belt_encloses_the_prism_its_teeth_leave():
 def test_the_smooth_belt_is_the_sweep_its_sampling_describes():
     # The mitred-prism closed form the arc and the spring are held to,
     # read around a loop: R chords, and the analytic ring tangents on
-    # either side of each of them.
+    # either side of each of them. It wants the section centred on the
+    # path -- an off-centre one rides a longer or shorter curve than the
+    # path does, which is what the exact areal check above accounts for
+    # and this approximation does not.
     segments = 32
-    mesh = molejo.evaluate(belt(circles=PULLEYS, path=segments))
+    section = [[-0.65, -3.0], [0.65, -3.0], [0.65, 3.0], [-0.65, 3.0]]
+    mesh = molejo.evaluate(belt(circles=PULLEYS, section=section, path=segments))
     centres, normals, _ = wrap_rings(PULLEYS, segments)
     chords = np.linalg.norm(
         np.diff(np.vstack([centres, centres[:1]]), axis=0), axis=1
@@ -679,7 +711,7 @@ def test_the_smooth_belt_is_the_sweep_its_sampling_describes():
     )
     tangents = np.vstack([tangents, tangents[:1]])
     assert signed_volume(mesh) == pytest.approx(
-        swept_volume(shoelace(SECTION), chords, tangents), rel=1e-3
+        swept_volume(shoelace(section), chords, tangents), rel=1e-3
     )
 
 

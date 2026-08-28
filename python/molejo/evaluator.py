@@ -31,11 +31,15 @@ place they live:
   then the start-cap fan, then the end-cap fan. Winding is outward
   throughout: the start cap faces ``-tangent`` and the end cap
   ``+tangent``.
+* A closed loop drops the duplicate ring and both caps: ring *R*-1's
+  quads wrap onto ring 0, so ``V = R*M`` and ``F = 2*R*M``. Only a
+  ``wrap`` path is a loop today; closing a general chain waits on the
+  end frame, which transport does not bring back in general.
 
-What this build evaluates is a circle profile swept along a chain of
-``line``, ``arc`` and ``helix`` primitives. Every other primitive raises
-:class:`NotImplementedError` naming itself rather than guessing; the
-wrap and spline batches fill them in against fixtures.
+What this build evaluates is a circle or polygon profile swept along a
+chain of ``line``, ``arc`` and ``helix`` primitives, or around a
+``wrap``. ``spline`` raises :class:`NotImplementedError` naming itself
+rather than guessing; the spline batch fills it in against fixtures.
 """
 
 import math
@@ -214,14 +218,8 @@ def transport(frame, tangent, origin=None):
 # --- profiles --------------------------------------------------------------
 
 
-def _profile_points(profile, values, count):
-    """The profile as ``(count, 2)`` coordinates in the profile frame."""
-    kind = profile["type"]
-    if kind != "circle":
-        raise NotImplementedError(
-            f"profile: the '{kind}' profile is not implemented yet; this molejo "
-            f"build evaluates 'circle' only"
-        )
+def _circle_points(profile, values, count):
+    """Vertex *j* of *M* at angle ``2*pi*j/M``, at ``cos*x + sin*y``."""
     radius = _resolve(profile["radius"], values, "profile.radius")
     if radius <= 0.0:
         raise EvaluationError(
@@ -232,6 +230,51 @@ def _profile_points(profile, values, count):
     points[:, 0] = radius * np.cos(angles)
     points[:, 1] = radius * np.sin(angles)
     return points
+
+
+def _polygon_points(profile, values, count):
+    """The declared points, in order; the count is theirs, checked already.
+
+    A polygon's coordinates are ordinary numeric slots, so a profile may
+    be driven by parameters like anything else. Their order is the
+    author's: counter-clockwise in the profile frame, as the circle's is,
+    or the sweep winds inward.
+    """
+    points = np.empty((count, 2), dtype=np.float64)
+    for index, point in enumerate(profile["points"]):
+        points[index] = _resolve_vector(point, values, f"profile.points[{index}]")
+    return points
+
+
+#: The profiles this build evaluates. One missing from here is valid v1
+#: vocabulary that raises naming itself.
+_PROFILES = {
+    "circle": _circle_points,
+    "polygon": _polygon_points,
+}
+
+
+def _profile_points(profile, values, count):
+    """The profile as ``(count, 2)`` coordinates in the profile frame."""
+    kind = profile["type"]
+    sampler = _PROFILES.get(kind)
+    if sampler is None:
+        raise NotImplementedError(
+            f"profile: the '{kind}' profile is not implemented yet; this molejo "
+            f"build evaluates 'circle' and 'polygon' only"
+        )
+    return sampler(profile, values, count)
+
+
+def _inner_face(points):
+    """Which profile vertices the teeth displace: those at the minimum *x*.
+
+    Exact equality, not a tolerance: a section whose inner face is flat
+    -- every belt's is -- has two or more vertices there, and one whose
+    inner face is rounded displaces a single vertex into a spike, which
+    is authorship rather than something molejo guesses at.
+    """
+    return points[:, 0] == points[:, 0].min()
 
 
 # --- paths -----------------------------------------------------------------
@@ -259,7 +302,7 @@ def _sample_path(path, values, segments):
         if sampler is None:
             raise NotImplementedError(
                 f"{loc}: the '{kind}' path primitive is not implemented yet; this "
-                f"molejo build evaluates 'line', 'arc' and 'helix' only"
+                f"molejo build evaluates 'line', 'arc', 'helix' and 'wrap' only"
             )
         primitive_centres, primitive_axes, frame = sampler(
             primitive, values, segments, frame, loc
@@ -409,46 +452,236 @@ def _sample_helix(primitive, values, segments, frame, loc):
     return centres, axes, frame
 
 
+def _wrap_geometry(primitive, values, segments, loc):
+    """The belt's own geometry: ring centres, tangents, and arc lengths.
+
+    A wrap is planar -- it lies in the world XY plane, because its
+    circles are declared there -- and it runs the external tangents,
+    clockwise seen from ``+Z``, touching every circle along its outward
+    normal. For consecutive circles at distance *L* with radii *r* and
+    *r'*, the shared outward normal is
+
+        n = delta*chat + sqrt(1 - delta^2)*rot90(chat),  delta = (r - r')/L
+
+    and the direction of travel is ``(n_y, -n_x)``. The elements of the
+    loop are span 0, the arc about circle 1, span 1, … and finally the
+    arc about circle 0, each spent ``segments`` rings; the loop's origin
+    is where the belt leaves circle 0.
+    """
+    circles = primitive["around"]
+    count = len(circles)
+
+    centres, radii = [], []
+    for index, circle in enumerate(circles):
+        centres.append(
+            _resolve_vector(circle["center"], values, f"{loc}.around[{index}].center")
+        )
+        radius = _resolve(circle["radius"], values, f"{loc}.around[{index}].radius")
+        if radius <= 0.0:
+            raise EvaluationError(
+                f"{loc}.around[{index}].radius: must be a positive number, got "
+                f"{_describe(radius)}"
+            )
+        radii.append(radius)
+
+    normals = []
+    for index in range(count):
+        following = (index + 1) % count
+        span = centres[following] - centres[index]
+        length = float(np.linalg.norm(span))
+        gap = radii[index] - radii[following]
+        if length <= abs(gap):
+            raise EvaluationError(
+                f"{loc}.around[{following}]: a wrap needs an external tangent between "
+                f"consecutive circles; around[{index}] and around[{following}] are too "
+                f"close for one"
+            )
+        direction = span / length
+        delta = gap / length
+        across = np.array([-direction[1], direction[0]])
+        normals.append(delta * direction + math.sqrt(1.0 - delta * delta) * across)
+
+    rings = 2 * count * segments
+    ring_centres = np.zeros((rings, 3), dtype=np.float64)
+    tangents = np.zeros((rings, 3), dtype=np.float64)
+    stations = np.empty(rings, dtype=np.float64)
+    span_starts = np.empty(count, dtype=np.float64)
+    steps = np.arange(segments, dtype=np.float64) / segments
+
+    travelled = 0.0
+    at = 0
+    for index in range(count):
+        following = (index + 1) % count
+        normal = normals[index]
+
+        # The tangent span, from circle `index` to circle `following`.
+        start = centres[index] + radii[index] * normal
+        end = centres[following] + radii[following] * normal
+        length = float(np.linalg.norm(end - start))
+        span_starts[index] = travelled
+        ring_centres[at : at + segments, :2] = start + steps[:, None] * (end - start)
+        tangents[at : at + segments, 0] = normal[1]
+        tangents[at : at + segments, 1] = -normal[0]
+        stations[at : at + segments] = travelled + steps * length
+        travelled += length
+        at += segments
+
+        # The arc about circle `following`, clockwise from the normal the
+        # belt arrives on to the one it leaves on.
+        arrival = math.atan2(normal[1], normal[0])
+        departure = math.atan2(normals[following][1], normals[following][0])
+        turn = (arrival - departure) % (2.0 * math.pi)
+        radius = radii[following]
+        angles = arrival - turn * steps
+        cosine = np.cos(angles)
+        sine = np.sin(angles)
+        ring_centres[at : at + segments, 0] = centres[following][0] + radius * cosine
+        ring_centres[at : at + segments, 1] = centres[following][1] + radius * sine
+        tangents[at : at + segments, 0] = sine
+        tangents[at : at + segments, 1] = -cosine
+        stations[at : at + segments] = travelled + steps * (radius * turn)
+        travelled += radius * turn
+        at += segments
+
+    return {
+        "centres": ring_centres,
+        "tangents": tangents,
+        "stations": stations,
+        "length": travelled,
+        "span_starts": span_starts,
+    }
+
+
+def _sample_wrap(primitive, values, segments, frame, loc):
+    """A belt around ordered circles, as a closed planar loop.
+
+    The one primitive that says where it is, so it starts in a frame of
+    its own rather than the one it is handed -- which is why validation
+    keeps it alone in its path. Local *x* is the outward normal and local
+    *y* is world ``+Z``, and the belt circulates clockwise seen from
+    ``+Z`` so that triple is right-handed and the pinned outward winding
+    needs no special case. Transport is then the ordinary ring-by-ring
+    one: the path is planar, so every minimal rotation is about ``+/-Z``
+    and the frame comes back to the start frame at the seam.
+    """
+    wrap = _wrap_geometry(primitive, values, segments, loc)
+    centres, tangents = wrap["centres"], wrap["tangents"]
+    start = Frame(
+        origin=centres[0],
+        x=(-tangents[0][1], tangents[0][0], 0.0),
+        y=(0.0, 0.0, 1.0),
+        tangent=tangents[0],
+    )
+    axes, frame = _carried(start, centres, tangents)
+    return centres, axes, frame
+
+
+def _wrap_displacement(primitive, values, segments, loc):
+    """How far each ring's inner face is pushed toward the circles.
+
+    Teeth are a periodic trapezoid in arc length whose period is the
+    loop's length over the declared count: an integer count over the
+    whole loop is what closes the pattern at the seam, and what keeps a
+    moving idler changing the tooth pitch *length* rather than the tooth
+    count. One period is a quarter crest centred on the pattern origin, a
+    quarter ramp, a quarter root and a quarter ramp back. The declared
+    ``teeth.pitch`` is the nominal pitch of the belt standard and is not
+    read here (see design.md, "The wrap").
+
+    The origin is ``anchor`` (a distance along a named tangent span, so a
+    belt clamped to a carriage keeps its teeth meshed as the carriage
+    runs), or ``phase`` (belt travel from the wrap's own origin), or the
+    wrap's own origin when the document names neither.
+    """
+    teeth = primitive.get("teeth")
+    anchor = primitive.get("anchor")
+    if teeth is None and anchor is None and "phase" not in primitive:
+        return None
+
+    wrap = _wrap_geometry(primitive, values, segments, loc)
+    origin = 0.0
+    if anchor is not None:
+        origin = wrap["span_starts"][anchor["span"]] + _resolve(
+            anchor["at"], values, f"{loc}.anchor.at"
+        )
+    elif "phase" in primitive:
+        origin = _resolve(primitive["phase"], values, f"{loc}.phase")
+
+    if teeth is None:
+        return None
+    height = _resolve(teeth["height"], values, f"{loc}.teeth.height")
+    if height < 0.0:
+        raise EvaluationError(
+            f"{loc}.teeth.height: must be a non-negative number, got "
+            f"{_describe(height)}"
+        )
+
+    period = wrap["length"] / teeth["count"]
+    fraction = ((wrap["stations"] - origin) / period) % 1.0
+    distance = np.minimum(fraction, 1.0 - fraction)
+    return height * np.clip((0.375 - distance) * 4.0, 0.0, 1.0)
+
+
 #: The path primitives this build evaluates. A primitive missing from here
 #: is valid v1 vocabulary that raises naming itself.
 _SAMPLERS = {
     "line": _sample_line,
     "arc": _sample_arc,
     "helix": _sample_helix,
+    "wrap": _sample_wrap,
 }
 
 
 # --- mesh assembly ---------------------------------------------------------
 
 
-def _wall_vertices(centres, axes, points):
-    """Ring-major wall vertices: ``ring*M + j``, in the ring's own frame."""
-    u = points[:, 0]
+def _wall_vertices(centres, axes, points, inner=None, displacement=None):
+    """Ring-major wall vertices: ``ring*M + j``, in the ring's own frame.
+
+    ``displacement`` is a per-ring offset pushing the profile's inner
+    face -- the vertices ``inner`` marks -- toward the negative local
+    *x*; that is what a tooth is. Without it the profile is the same at
+    every ring, which is every primitive but a toothed wrap.
+    """
+    u = np.broadcast_to(points[:, 0], (len(centres), len(points)))
     v = points[:, 1]
+    if displacement is not None:
+        u = u - displacement[:, None] * inner[None, :]
     return (
         centres[:, None, :]
-        + u[None, :, None] * axes[:, None, 0, :]
+        + u[:, :, None] * axes[:, None, 0, :]
         + v[None, :, None] * axes[:, None, 1, :]
     )
 
 
-def _faces(rings, count):
-    """Walls (ring-major), then the start-cap fan, then the end-cap fan."""
+def _faces(rings, count, loop=False):
+    """Walls (ring-major), then the start-cap fan, then the end-cap fan.
+
+    A loop has neither cap and one more band of walls: its last ring's
+    quads wrap onto ring 0, which is what closes the belt without a
+    duplicate ring.
+    """
     j = np.arange(count, dtype=np.int64)
     following = (j + 1) % count
-    ring = np.arange(rings - 1, dtype=np.int64)[:, None] * count
+    bands = rings if loop else rings - 1
+    ring = np.arange(bands, dtype=np.int64)[:, None] * count
+    onward = ((np.arange(bands, dtype=np.int64) + 1) % rings)[:, None] * count
 
     a = ring + j[None, :]
     b = ring + following[None, :]
-    c = b + count
-    d = a + count
-    quads = np.empty((rings - 1, count, 2, 3), dtype=np.int32)
+    c = onward + following[None, :]
+    d = onward + j[None, :]
+    quads = np.empty((bands, count, 2, 3), dtype=np.int32)
     quads[:, :, 0, 0] = a
     quads[:, :, 0, 1] = b
     quads[:, :, 0, 2] = c
     quads[:, :, 1, 0] = a
     quads[:, :, 1, 1] = c
     quads[:, :, 1, 2] = d
+
+    if loop:
+        # No open end, so nothing to cap: the walls already close.
+        return quads.reshape(-1, 3)
 
     start_centre = rings * count
     end_centre = start_centre + 1
@@ -532,10 +765,15 @@ def evaluate(document, values=None):
     validate(document)
     values = {} if values is None else values
 
-    if document.get("loop", False):
+    path = document["path"]
+    # A wrap is a closed loop and validation has already made its document
+    # say so; closing a chain of other primitives waits on the end frame,
+    # which a rotation-minimizing transport does not bring back in general.
+    looped = path[0]["type"] == "wrap"
+    if document.get("loop", False) and not looped:
         raise NotImplementedError(
-            "loop: closed-loop paths are not implemented yet; this molejo build "
-            "evaluates open paths only"
+            "loop: closing a chain of primitives is not implemented yet; this "
+            "molejo build closes the loop of a 'wrap' path only"
         )
 
     count = document["tessellation"]["profile"]
@@ -544,11 +782,20 @@ def evaluate(document, values=None):
     # Everything a parameter can touch is resolved before a single vertex is
     # written, which is what makes "no partial output" true rather than hoped.
     points = _profile_points(document["profile"], values, count)
-    centres, axes = _sample_path(document["path"], values, segments)
+    centres, axes = _sample_path(path, values, segments)
+    displacement = (
+        _wrap_displacement(path[0], values, segments, "path[0]") if looped else None
+    )
 
     rings = len(centres)
+    walls = _wall_vertices(
+        centres, axes, points, _inner_face(points), displacement
+    ).reshape(-1, 3)
+    if looped:
+        return Mesh(vertices=np.ascontiguousarray(walls), faces=_faces(rings, count, True))
+
     vertices = np.empty((rings * count + 2, 3), dtype=np.float64)
-    vertices[: rings * count] = _wall_vertices(centres, axes, points).reshape(-1, 3)
+    vertices[: rings * count] = walls
     vertices[rings * count] = centres[0]
     vertices[rings * count + 1] = centres[-1]
 
