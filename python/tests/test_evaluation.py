@@ -181,7 +181,7 @@ def test_the_volume_approaches_the_analytic_cylinder_within_the_chord_error():
     mesh = molejo.evaluate(cylinder(radius, length, 4, profile))
     analytic = math.pi * radius * radius * length
     deficit = chord_deficit(profile)
-    assert deficit < 1e-3, "a 64-gon should be within a tenth of a percent"
+    assert deficit == pytest.approx(0.0016, abs=1e-4), "a 64-gon falls 0.16% short"
     assert signed_volume(mesh) == pytest.approx(analytic, rel=2 * deficit)
     assert signed_volume(mesh) < analytic, "an inscribed prism cannot exceed the cylinder"
 
@@ -190,6 +190,91 @@ def test_the_arrays_are_float64_vertices_and_integer_faces():
     mesh = molejo.evaluate(cylinder())
     assert mesh.vertices.dtype == np.float64
     assert np.issubdtype(mesh.faces.dtype, np.integer)
+
+
+# --- frame transport --------------------------------------------------------
+#
+# A line has one tangent, so transport along it is the identity; what has to
+# be right is the single turn from the start frame (+Z) onto that tangent.
+# The arc and helix batches transport per ring on top of this, so the helper
+# is asserted directly and not only through the cylinder it produces.
+
+
+def slanted(to, radius=5.0, path=4, profile=24):
+    return {
+        "molejo": 1,
+        "profile": {"type": "circle", "radius": radius},
+        "path": [{"type": "line", "to": list(to)}],
+        "loop": False,
+        "tessellation": {"path": path, "profile": profile},
+    }
+
+
+@pytest.mark.parametrize(
+    "to",
+    [(10.0, 0.0, 0.0), (0.0, 7.0, 0.0), (0.0, 0.0, -12.0), (3.0, 4.0, 12.0)],
+    ids=["+x", "+y", "-z reversed", "oblique"],
+)
+def test_a_line_in_any_direction_sweeps_a_round_tube(to):
+    radius, profile = 5.0, 24
+    mesh = molejo.evaluate(slanted(to, radius=radius, profile=profile))
+    axis = np.array(to) / np.linalg.norm(to)
+
+    walls = mesh.vertices[:-2]
+    along = walls @ axis
+    radial = np.linalg.norm(walls - along[:, None] * axis, axis=1)
+    assert radial == pytest.approx(radius, abs=1e-12), "the profile stayed circular"
+
+    length = float(np.linalg.norm(to))
+    assert signed_volume(mesh) == pytest.approx(
+        prism_volume(radius, length, profile), rel=1e-12
+    )
+    assert watertight_failures(mesh.faces) == []
+
+
+def test_a_reversed_path_still_winds_outward():
+    # The tangent is antiparallel to the start frame's: the one direction
+    # with no minimal rotation, so the axis is chosen deterministically.
+    mesh = molejo.evaluate(slanted((0.0, 0.0, -12.0)))
+    assert signed_volume(mesh) > 0.0, "a reversed sweep must not turn inside out"
+    assert molejo.evaluate(slanted((0.0, 0.0, -12.0))).vertices.tobytes() == (
+        mesh.vertices.tobytes()
+    ), "the antiparallel axis choice must be deterministic"
+
+
+def test_transport_onto_the_same_tangent_changes_nothing():
+    from molejo.evaluator import START_FRAME, minimal_rotation, transport
+
+    assert (minimal_rotation((0.0, 0.0, 1.0), (0.0, 0.0, 1.0)) == np.identity(3)).all()
+    carried = transport(START_FRAME, (0.0, 0.0, 1.0))
+    assert (carried.x == START_FRAME.x).all()
+    assert (carried.y == START_FRAME.y).all()
+
+
+@pytest.mark.parametrize(
+    "tangent",
+    [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0), (0.6, 0.0, 0.8)],
+    ids=["+x", "+y", "-z", "oblique"],
+)
+def test_transport_keeps_the_frame_orthonormal_and_right_handed(tangent):
+    from molejo.evaluator import START_FRAME, transport
+
+    carried = transport(START_FRAME, tangent)
+    assert np.linalg.norm(carried.x) == pytest.approx(1.0, abs=1e-12)
+    assert np.linalg.norm(carried.y) == pytest.approx(1.0, abs=1e-12)
+    assert float(carried.x @ carried.y) == pytest.approx(0.0, abs=1e-12)
+    assert float(carried.x @ carried.tangent) == pytest.approx(0.0, abs=1e-12)
+    assert np.cross(carried.x, carried.y) == pytest.approx(tangent, abs=1e-12)
+
+
+def test_transport_turns_by_the_angle_between_the_tangents():
+    from molejo.evaluator import START_FRAME, transport
+
+    carried = transport(START_FRAME, (1.0, 0.0, 0.0))
+    # +Z onto +X is a quarter turn about -Y; the profile's own x-axis is
+    # carried onto -Z and its y-axis is left alone.
+    assert carried.x == pytest.approx((0.0, 0.0, -1.0), abs=1e-12)
+    assert carried.y == pytest.approx((0.0, 1.0, 0.0), abs=1e-12)
 
 
 # --- determinism ------------------------------------------------------------
