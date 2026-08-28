@@ -45,10 +45,9 @@ whole design.
 **The master is analytic and procedural; meshes are evaluations.** The
 spec defines exact surfaces in closed form; every mesh is a sampling at
 the declared resolution. This is what keeps the exact-vs-mesh question
-about *evaluators* rather than the representation: an exact (B-rep)
-evaluator — e.g. an OCCT sweep of the same profile along the same path —
-can be added later without touching the schema. Neither package claims
-exactness today; consumers get meshes and should report them as such.
+about *evaluators* rather than the representation: the B-rep evaluator
+below consumes the same schema the mesh evaluators do, and nothing in
+the schema knows which kind of evaluation it will feed.
 
 **Tessellation is fixed and declared, never adaptive.** Adaptive
 (curvature/deflection-based) tessellation is why existing kernels
@@ -76,6 +75,23 @@ ordinary code, in a browser by whatever expression layer the consumer
 already trusts. This keeps molejo's contract pure (spec + values →
 vertices), keeps parity surface minimal, and avoids inventing a second
 expression language beside the consumer's.
+
+**B-rep compatibility is a vocabulary admission rule.** The
+originating consumer's testing architecture asserts on exact shapes,
+so molejo must fit it, not merely permit it. Every v1 primitive maps
+to an exact OCCT curve — `line` and `arc` as edges, a `wrap` chain as
+tangent line/arc edges, `helix` as a curve on a cylindrical surface,
+`spline` as a B-spline curve — and a primitive enters the vocabulary
+only with both its closed-form mesh math (twice) and its exact B-rep
+construction defined. The B-rep evaluator is an optional extra of the
+Python package (the browser never needs OCCT). Exactness is stated
+honestly: sweeps along lines and arcs produce analytic surfaces
+(planes, cylinders, toroidal patches — the entire belt case), while
+sweeps along helix and spline paths are tolerance-declared B-spline
+surfaces, because no kernel has a closed form for them; that is the
+same fidelity class OCCT gives any swept feature. B-rep output carries
+no vertex contract, so its parity with the mesh evaluators is
+property-based: volume and area against each fixture's expectations.
 
 **Python-first authoring; JSON is the representation.** Authors write
 shapes in Python — vocabulary constructors (`Circle`, `Helix`, …) plus
@@ -124,3 +140,10 @@ represents shapes it can define analytically.
   otherwise.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
+- The sweep frame convention — how the profile is transported along
+  the path (rotation-minimizing vs Frenet, and the tie-break on
+  straight segments) — must be pinned once and shared by all three
+  evaluators, including MakePipeShell's trihedron law on the B-rep
+  side. The arc and helix fixtures decide.
+- Which OCCT binding the `brep` extra depends on (OCP is the working
+  assumption, matching the originating consumer's stack).

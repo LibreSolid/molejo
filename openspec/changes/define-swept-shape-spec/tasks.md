@@ -68,22 +68,43 @@
       per-fixture coordinate tolerance; one deliberately perturbed
       expectation proves both suites actually compare.
 
-## 6. Distribution
+## 6. B-rep evaluator (exact shapes)
 
-- [ ] 6.1 `python -m build` produces an installable wheel from
-      `python/`; a clean-venv install imports `molejo` and evaluates
-      the cylinder fixture.
-- [ ] 6.2 `npm pack` from `js/` produces an installable package; a
+- [ ] 6.1 Red: with the `brep` extra installed, the cylinder spec
+      evaluates to a single closed solid whose volume matches the
+      analytic volume; without the extra, invoking the B-rep evaluator
+      raises naming the extra and mesh evaluation still works.
+- [ ] 6.2 Implement profile wires, line/arc path edges, the pipe-shell
+      sweep with the pinned frame convention, and caps; assert
+      line/arc sweeps yield analytic surfaces only.
+- [ ] 6.3 Red: helix and spline sweeps produce closed solids agreeing
+      with their mesh fixtures on volume and area within fixture
+      tolerance, with the approximation tolerance declared on the
+      result.
+- [ ] 6.4 Implement helix (curve-on-cylinder) and spline (B-spline
+      curve) path construction.
+- [ ] 6.5 Property-parity pass: the parity suite checks every
+      fixture's expected-mesh volume and area against the B-rep
+      evaluation when the extra is installed.
+
+## 7. Distribution
+
+- [ ] 7.1 `python -m build` produces an installable wheel from
+      `python/`; a clean-venv install (no extras) imports `molejo` and
+      evaluates the cylinder fixture.
+- [ ] 7.2 `npm pack` from `js/` produces an installable package; a
       scratch consumer imports it and evaluates the cylinder fixture.
-- [ ] 6.3 Version discipline recorded in README: package versions carry
+- [ ] 7.3 Version discipline recorded in README: package versions carry
       the spec version they implement; publishing itself waits for the
       pilot's explicit go.
 
-## 7. Validation cases (consumer-side, evidence recorded here)
+## 8. Validation cases (consumer-side, evidence recorded here)
 
-- [ ] 7.1 Valve spring: helix spec driven by one lift parameter renders
-      and animates in the consuming framework's viewer.
-- [ ] 7.2 Belt: wrap spec with circulating phase and carriage-anchored
+- [ ] 8.1 Valve spring: helix spec driven by one lift parameter renders
+      and animates in the consuming framework's viewer, and its B-rep
+      evaluation passes an exact-shape assertion in the consumer's
+      test suite.
+- [ ] 8.2 Belt: wrap spec with circulating phase and carriage-anchored
       span validates against the belt case.
-- [ ] 7.3 Loom/filament: spline spec driven by three axis parameters
+- [ ] 8.3 Loom/filament: spline spec driven by three axis parameters
       validates the K^d claim — no sampling anywhere.

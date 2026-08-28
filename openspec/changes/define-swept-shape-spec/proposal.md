@@ -21,7 +21,7 @@ evaluations — build/test and per-frame viewer — provably agree.
 
 ## What Changes
 
-molejo is founded as that representation, with five capabilities:
+molejo is founded as that representation, with six capabilities:
 
 - **spec-schema**: a versioned, JSON-serializable spec: a closed planar
   profile (circle, polygon) swept along a chain of path primitives
@@ -31,8 +31,14 @@ molejo is founded as that representation, with five capabilities:
   analytic at its core, watertight by construction, deterministic in
   vertex count and ordering.
 - **python-evaluator**: spec + `{parameter: number}` → triangle mesh
-  (numpy vertices/faces) and STL bytes. This is the exact-evaluation
-  side: build pipelines, geometric tests, collision checks.
+  (numpy vertices/faces) and STL bytes. This is the build-and-test
+  side: pipelines, geometric assertions, collision checks on meshes.
+- **brep-evaluator**: the same spec + the same values → an exact OCCT
+  B-rep solid, as an optional extra of the Python package, so a
+  consumer whose testing architecture asserts on exact shapes can
+  treat a molejo instant like any other exact part. Path curves are
+  constructed exactly; agreement with the mesh evaluators is asserted
+  on analytic properties (volume, area).
 - **js-evaluator**: the same spec + the same values → vertex buffers
   (`Float32Array` positions, index array) consumable by three.js,
   cheap enough to re-evaluate every animation frame.
@@ -48,9 +54,9 @@ molejo is founded as that representation, with five capabilities:
 
 ### New Capabilities
 
-All five: `spec-schema`, `python-evaluator`, `js-evaluator`, `parity`,
-`distribution`. This is the founding change; there is no existing
-behavior to modify.
+All six: `spec-schema`, `python-evaluator`, `brep-evaluator`,
+`js-evaluator`, `parity`, `distribution`. This is the founding change;
+there is no existing behavior to modify.
 
 ### Modified Capabilities
 
@@ -59,7 +65,8 @@ None.
 ## Impact
 
 - `python/molejo/` — schema model, validation, path/profile evaluation,
-  mesh assembly, STL export.
+  mesh assembly, STL export; optional OCCT-backed B-rep construction
+  behind the `brep` extra.
 - `js/src/` — schema parsing and the twin evaluation, emitting typed
   arrays.
 - `fixtures/` — parity fixtures, one per primitive plus composed cases.
@@ -76,5 +83,5 @@ None.
   shows designer-controlled splines are not enough).
 - Any expression language over parameters: consumers evaluate their
   expressions to numbers before calling molejo.
-- A B-rep evaluator. The analytic master makes one possible later
-  without a schema change; nothing here depends on it.
+- STEP/IGES export of B-rep evaluations: the consumer's exchange
+  machinery owns file formats beyond STL.

@@ -16,7 +16,10 @@ parameters. The spec is the model. Meshes are evaluations of it:
   and collision checks;
 - the **JavaScript evaluator** turns the same spec plus the same values
   into vertex buffers for three.js, cheap enough to re-evaluate every
-  animation frame.
+  animation frame;
+- an optional **B-rep evaluator** (OCCT, via the `brep` extra of the
+  Python package) turns the same spec plus the same values into an
+  exact solid, for testing architectures that assert on exact shapes.
 
 Both evaluators emit the same vertex count in the same order by
 construction — tessellation is fixed and declared in the spec, never
@@ -67,10 +70,12 @@ needed.
 
 ## Design properties
 
-- **Analytic master, mesh evaluations.** The spec defines exact
-  surfaces; every mesh is a deterministic sampling of them at the
-  declared resolution. An exact (B-rep) evaluator can be added later
-  without changing the representation.
+- **Analytic master, evaluations on demand.** The spec defines exact
+  curves and surfaces; every mesh is a deterministic sampling of them
+  at the declared resolution, and the B-rep evaluator constructs the
+  same curves exactly in OCCT. Line- and arc-based sweeps (belts) are
+  analytic surfaces; helix and spline sweeps are tolerance-declared
+  B-spline surfaces, as in any kernel.
 - **Sweeps only, no booleans.** A closed profile swept along a path is
   watertight by construction; there is no repair pass because no input
   can be broken. Boolean interaction belongs to whatever mesh machinery
