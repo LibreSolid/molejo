@@ -73,7 +73,9 @@ a declared periodic pattern displacing the profile's inner face along
 arc length. The count is declared, so tooth count — hence vertex count
 and ordering — never varies with parameters; the anchor (open belt
 clamped to a carriage, arc-length origin at the clamp) or phase
-(closed loop, pattern circulates) only slides the pattern. v1 flanks
+(closed loop, pattern circulates) only slides the pattern — both over
+the same closed loop, since an open belt's two ends meet at the clamp
+(see "The wrap" below). v1 flanks
 are trapezoidal: piecewise-linear teeth keep every face of a toothed
 belt analytic in B-rep (planes, cylinder and torus patches); curved
 HTD-style flanks would drop tooth surfaces into the B-spline class and
@@ -211,8 +213,9 @@ Three questions the slice deliberately did not answer, because guessing
 them here would pin them by accident: how *N* is distributed across a
 multi-primitive path, how a closed loop joins its ends, and what
 `tessellation.profile` means for a polygon whose point count is already
-declared. The first is settled below; the loop and the polygon still
-raise naming themselves rather than choosing.
+declared. All three are settled below — the first under "Chained
+paths", the other two under "The wrap", by the belt that first needed
+them.
 
 **Chained paths, arcs, and helices.** Settled while implementing the
 curved primitives (tasks 3.1–3.4), and binding on every later one.
@@ -305,6 +308,146 @@ curved primitives (tasks 3.1–3.4), and binding on every later one.
   a spring given a straight lead-in has a real kink where it starts
   winding: that is what a helix is, not an evaluator artefact.
 
+**The wrap, its teeth, the polygon profile, and the closed loop.**
+Settled while implementing the belt (tasks 4.1–4.3) against the
+Metamaquina2 geometry, and binding on every evaluator. The wrap is the
+first shape that needs a closed loop and the first that needs a
+profile which is not a circle, so those two questions are answered here
+rather than invented later.
+
+- **A wrap is planar, and it says where it is.** Every other primitive
+  describes a shape without describing where it is; a wrap cannot,
+  because its circles are declared as world coordinates. The wrap lies
+  in the world XY plane (*z* = 0), the circle centres are points of
+  that plane, and the path is the belt's **pitch line**: the declared
+  radii are pitch radii, and the author places the profile across that
+  line as the belt section does across its own pitch line.
+- **A wrap is the only primitive in its path**, structurally. It
+  defines its own start frame instead of continuing from the frame it
+  is handed, so a chain containing one would have two starts; the
+  validator refuses it naming the wrap's position. For the same reason
+  a wrap ignores the incoming frame entirely.
+- **The wrap frame.** At every station the profile's local *x* is the
+  in-plane **outward** normal (away from the circles) and its local
+  *y* is world **+Z** (the belt's width direction), with the tangent
+  the direction of travel. That triple is right-handed — and therefore
+  keeps the pinned outward winding without a special case — only if the
+  belt circulates **clockwise seen from +Z**, so that is the pinned
+  circulation: *n̂* = rot(+90°)*t̂*, *t̂* = rot(−90°)*n̂*.
+- **Traversal: external tangents, outside every circle, in declared
+  order.** Between consecutive circles *i* and *j* = *i*+1 (mod *k*)
+  the belt runs the external tangent that touches both on the same
+  side. With *c* = *C_j* − *C_i*, *L* = |*c*|, *ĉ* = *c*/*L*,
+  *ĉ*⊥ = (−*c_y*, *c_x*)/*L* and δ = (*r_i* − *r_j*)/*L*:
+
+      n̂ = δ·ĉ + √(1−δ²)·ĉ⊥        (the shared outward normal)
+      t̂ = (n̂_y, −n̂_x)             (the direction of travel)
+      P = C_i + r_i·n̂,  Q = C_j + r_j·n̂,  |PQ| = √(L² − Δr²)
+
+  and the arc about *C_j* runs clockwise from the arriving normal to
+  the departing one, through *w* = (θ_in − θ_out) mod 2π radians, so
+  its length is *r_j*·*w*. The elements of the loop are therefore
+  span₀, arc₁, span₁, arc₂, …, span_{k−1}, arc₀ — 2*k* of them — and
+  the loop's own origin (*s* = 0, ring 0) is the point where the belt
+  leaves circle 0. Listing the circles in an order that is not the
+  clockwise circulation of their hull produces a belt that crosses
+  itself: evaluable, deterministic, visibly wrong, and the author's
+  obligation, exactly as a kinked joint is. Crossed and serpentine
+  belts (a side flag per circle) stay a recorded non-goal until a
+  project asks.
+- **Segments are spent per element, not per wrap.** A wrap of *k*
+  circles is 2*k* elements, each spent *N* = `tessellation.path`
+  segments, so a wrap has *R* = 2·*k*·*N* rings — a function of the
+  document alone, as the distribution rule must be. Rings are uniform
+  in arc length within an element (uniform in angle on an arc), and a
+  joint's ring belongs to the element that leaves it, as in any chain.
+  Segment budget never follows tooth count, span length, or a
+  parameter: a param-bound centre (a moving idler) changes tooth pitch
+  *length* and nothing else.
+- **The closed loop join.** A looped path drops the duplicate ring and
+  both caps: the last ring's quads wrap onto ring 0. So *V* = *R*·*M*
+  exactly and *F* = 2·*R*·*M*, with the same ring-major vertex order
+  and the same two-triangles-a-quad winding as an open sweep, ring
+  *R*−1 joining ring 0. Watertight without caps, because there are no
+  open ends. Only a wrap path is evaluated as a loop today, and a wrap
+  document must declare `loop: true` (structural) so that no document
+  lies about the topology it has; `loop: true` on any other path still
+  raises naming itself, because closing a general chain needs the end
+  frame to come back to the start frame, which rotation-minimizing
+  transport does not promise.
+- **A planar loop comes back without twist, and it is asserted.** Every
+  tangent of a wrap lies in the XY plane, so every minimal rotation of
+  the transport is about ±Z; the profile's *y* stays exactly world +Z
+  and the frame carried once around the loop returns to ring 0's frame.
+  That is a property of the geometry, not an assumption: the suite
+  transports the last ring's frame onto ring 0's tangent and demands
+  the start frame back.
+- **Ring stations are geometric; the belt slides past them.** For every
+  other primitive a vertex index names the same material point at every
+  binding. A belt's material genuinely moves along its loop, so for a
+  wrap a vertex index names the same *station* — the same arc-length
+  fraction of the loop from the wrap's own origin — and the teeth
+  circulate past it. That is what keeps the index buffer reusable while
+  the belt runs, and it is stated rather than quietly implied.
+- **Teeth are a periodic trapezoid in arc length.** The period is
+  *L*/`teeth.count`, where *L* is the loop's evaluated length: the
+  count is an integer over the whole loop, which is exactly what makes
+  the pattern close seamlessly at the seam, and what keeps a moving
+  idler changing tooth pitch length rather than tooth count.
+  `teeth.pitch` is therefore the **nominal** pitch of the belt standard
+  the author designed to (GT2's 2 mm), carried in the document for the
+  consumer and for the B-rep side; the mesh evaluators do not read it.
+  With *u* the fractional position in the period and *d* = min(*u*,
+  1−*u*) the distance from the pattern origin,
+
+      m = clamp((0.375 − d)·4, 0, 1)
+
+  so one period is ¼ crest (centred on the origin), ¼ ramp, ¼ root, ¼
+  ramp. The pattern origin is a crest centre, which is what makes an
+  anchor mean "a tooth is clamped here".
+- **Teeth displace the inner face only.** The profile's **inner face**
+  is every declared vertex at the exact minimum local *x*; those
+  vertices move by −`teeth.height`·*m*(*s*) (inward, toward the
+  circles) and every other vertex stays put. So the authored profile is
+  the belt band measured at the tooth roots, and the teeth protrude
+  from it. The minimum is exact equality, not a tolerance: a profile
+  whose inner face is not flat displaces one vertex and looks like a
+  spike, which is authorship. Likewise, fewer than about four rings per
+  tooth aliases the pattern — with *R* = 2·*k*·*N* rings and
+  `teeth.count` teeth, the author owes *N* ≳ 2·count/*k* — and molejo
+  does not guard it, for the same reason it does not police continuity.
+- **`anchor` and `phase` are alternatives, never both.** Both name the
+  pattern's material origin *s*₀ along the loop and a document carrying
+  the two is refused structurally. `anchor` = {`span`, `at`} puts the
+  origin on a tangent span: `span` is a literal index of a span
+  (0…*k*−1, checked structurally against the circle count) and `at` is
+  a slot giving the distance from that span's start, so an open belt
+  clamped to a carriage binds `at` to the carriage position and its
+  teeth stay meshed as the carriage runs. `phase` is a slot in
+  arc-length units — belt travel, so a consumer feeds
+  pulley_radius·motor_angle — measured from the wrap's own origin in
+  the direction of travel. Neither present means *s*₀ = 0. Both
+  anchored and unanchored wraps evaluate as the same geometrically
+  closed loop: the physical open belt's two ends are clamped at one
+  carriage point, so the loop passes through the clamp, and the anchor
+  changes where the teeth sit, never whether the mesh closes.
+- **Polygon profiles are the declared points, in order, and
+  `tessellation.profile` is their count.** A polygon's vertex *j* is
+  its *j*-th declared (x, y) point in the profile frame — its
+  coordinates are ordinary numeric slots and may be parameter-bound —
+  and `tessellation.profile` must equal the number of points, refused
+  structurally when it does not. Any other reading (resampling the
+  outline, ignoring the count) would make the pinned *V* = *R*·*M*
+  formulas false or the declared count a lie. The points must run
+  counter-clockwise in the profile frame, as the circle's do, or the
+  sweep winds inward; that is the author's obligation, since a
+  parameter can flip it.
+- **What a wrap refuses at evaluation**, naming the slot, because all
+  three can arrive through parameters: a circle of non-positive radius,
+  two consecutive circles too close to admit an external tangent
+  (*L* ≤ |Δ*r*|, which also catches coincident centres), and a negative
+  tooth height.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 
@@ -330,18 +473,18 @@ represents shapes it can define analytically.
 
 ## Open Questions
 
-- `wrap` residual details (the working answer above settles the
-  shape): whether `anchor` and `phase` are separate slots or one
-  convention, side flags for crossed/serpentine belts, whether
-  `samples_per_tooth` replaces `path_samples` on toothed wraps, and
-  whether `Teeth(count=…)` is declared free-standing or validated
-  against wrap length; the belt validation case decides.
+- `wrap` residuals, now that "The wrap" above settles the signature,
+  the traversal, the loop, the teeth, and the two origins: side flags
+  for crossed and serpentine belts (a wrap runs outside every circle
+  today), and what to do when the evaluated period *L*/count departs
+  from the declared nominal `teeth.pitch` — refuse it, report it,
+  or make the tooth pitch-sized and let the root land absorb the
+  difference, which is what a stretched belt physically does. The belt
+  validation case decides; nothing chooses it early, because the
+  document already records both numbers.
 - Spline flavor for v1: Catmull-Rom through designer points vs cubic
   Bézier with explicit tangents. The loom validation case decides; both
   are pure arithmetic and parity-safe.
-- Whether profiles may reference parameters in v1 (a pressurized tube
-  bulging) or stay static. Default: static until a project demands
-  otherwise.
 - npm build tooling for `js/` (plain ESM now; whether TypeScript and a
   build step earn their place before first publish).
 - The sweep frame convention is now settled for the mesh evaluators
@@ -351,15 +494,15 @@ represents shapes it can define analytically.
   What remains open is the B-rep side: which of MakePipeShell's
   trihedron laws reproduces it, and whether a helix's roll about the
   tangent is expressible there or has to be built into the path curve.
-  The arc and helix fixtures are now the target it must reproduce.
-- How a closed loop joins its last ring to its first: whether `loop`
-  closes the wall by wrapping the last ring onto the first (dropping the
-  duplicate ring and both caps) and what it requires of the last
-  primitive's end frame, which a rotation-minimizing transport does not
-  in general bring back to the first ring's. `loop: true` still raises
-  naming itself; the wrap batch, whose belt is the first shape that
-  needs it, settles it.
-- What `tessellation.profile` means for a polygon profile, whose vertex
-  count its points already fix. The first polygon fixture decides.
+  The arc and helix fixtures are now the target it must reproduce, and
+  a wrap gives it the easy half: the loop decomposes into exact line
+  and arc edges in the world XY plane.
+- How a closed loop joins its last ring to its first is settled for a
+  wrap (see "The wrap": no duplicate ring, no caps, *V* = *R*·*M*), and
+  the wrap's planar path is what makes its end frame come back to its
+  start frame. What stays open is `loop: true` on a *general* chain,
+  which needs an answer to the frame that does not come back — turn the
+  residual roll out over the loop, refuse a chain that does not close,
+  or let the seam show. It raises naming itself until a shape needs it.
 - Which OCCT binding the `brep` extra depends on (OCP is the working
   assumption, matching the originating consumer's stack).
