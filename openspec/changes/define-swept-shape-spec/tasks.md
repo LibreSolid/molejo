@@ -65,12 +65,25 @@
       carriage).
 - [x] 4.3 Implement `wrap` in Python, then JS, to fixture parity, with
       the polygon profile and the closed-loop join it needs.
-- [ ] 4.4 Settle the spline flavor against the loom validation case;
-      record the decision in design.md.
-- [ ] 4.5 Red: spline fixture — a loom run whose end point and tangents
+- [x] 4.4 Settle the spline flavor against the loom validation case;
+      record the decision in design.md. Settled: a cubic Hermite chain
+      through the declared points, Catmull-Rom inside and clamped at the
+      ends, because the loom needs interpolation *and* end-direction
+      control and those are the same curve. Settled with it: what
+      `points` mean for a primitive that does not declare its start, the
+      two tangent slots and their defaults, and `tessellation.path` as a
+      count per *element* (see design.md, "The spline, its end tangents,
+      and the loom").
+- [x] 4.5 Red: spline fixture — a loom run whose end point and tangents
       are parameter references in three names (x, y, z); evaluation
-      cost measured independent of parameter count.
-- [ ] 4.6 Implement `spline` in Python, then JS, to fixture parity.
+      cost measured independent of parameter count. Two fixtures: the
+      filament loom (head bound in three names, two sag waypoints,
+      clamped at both ends) and the loom lead-in (a spline continuing a
+      line without a kink). The cost claim is asserted structurally —
+      every numeric slot read exactly once, a fully-parametric loom and
+      its literal twin reading the same slots to the same bits — rather
+      than measured.
+- [x] 4.6 Implement `spline` in Python, then JS, to fixture parity.
 
 ## 5. Parity harness
 
