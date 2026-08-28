@@ -37,13 +37,27 @@ import pytest
 
 pytest.importorskip("OCP", reason="the brep extra is not installed")
 
+from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+from OCP.TopAbs import TopAbs_IN, TopAbs_OUT
+from OCP.gp import gp_Pnt
+
 import molejo
 from molejo import Circle, Line, P, Polygon, Shape, Teeth, Wrap
 from molejo.brep import APPROXIMATION, BrepError, BrepResult
 from molejo.evaluator import EvaluationError
 
 from test_evaluation import cylinder, slanted
-from test_curved_paths import bend, elbow, tube_volume, QUARTER
+from test_curved_paths import (
+    QUARTER,
+    bend,
+    elbow,
+    helix_centres,
+    helix_length,
+    helix_tangents,
+    spring,
+    tube_volume,
+)
+from test_spline import hermite_rings, hermite_tangents, loom, loom_points, NEAR
 from test_wrap import CARRIAGE, PULLEYS, SECTION, belt, elements, modulation, toothed
 
 TAU = 2.0 * math.pi
@@ -159,6 +173,60 @@ def loop_length(circles):
     return stationed(circles)[1]
 
 
+def hermite_length(points, **kwargs):
+    """The arc length of a Hermite chain, by Gauss-Legendre quadrature.
+
+    The velocity of a cubic is a quadratic, so its norm is smooth and a
+    high-order rule is exact to machine precision on every span. That
+    makes ``pi*a^2*L`` an independent expectation for a swept spline, with
+    nothing borrowed from OCCT or from the evaluator.
+    """
+    points = np.asarray(points, dtype=np.float64)
+    tangents = hermite_tangents(points, **kwargs)
+    nodes, weights = np.polynomial.legendre.leggauss(200)
+    step = 0.5 * (nodes + 1.0)
+    weights = 0.5 * weights
+    square = step * step
+    total = 0.0
+    for index in range(len(points) - 1):
+        velocity = (
+            (6.0 * square - 6.0 * step)[:, None] * (points[index] - points[index + 1])
+            + (3.0 * square - 4.0 * step + 1.0)[:, None] * tangents[index]
+            + (3.0 * square - 2.0 * step)[:, None] * tangents[index + 1]
+        )
+        total += float(np.sum(weights * np.linalg.norm(velocity, axis=1)))
+    return total
+
+
+def where(result, point):
+    """Whether a point is inside the solid, outside it, or on its skin."""
+    classifier = BRepClass3d_SolidClassifier(result.solid)
+    classifier.Perform(gp_Pnt(*(float(value) for value in point)), 1e-9)
+    return classifier.State()
+
+
+def perpendicular(tangent):
+    axis = np.zeros(3)
+    axis[int(np.argmin(np.abs(tangent)))] = 1.0
+    across = np.cross(tangent, axis)
+    return across / np.linalg.norm(across)
+
+
+def assert_tube_about(result, centres, tangents, radius):
+    """The solid is the tube of ``radius`` about the given curve.
+
+    Every sampled point of the curve is inside it and every point pushed
+    a little past the wall is outside, which pins the *path* rather than
+    just its length: a solid of the right volume about the wrong curve
+    fails here.
+    """
+    for centre, tangent in zip(centres[1:-1], tangents[1:-1]):
+        across = perpendicular(tangent)
+        assert where(result, centre) == TopAbs_IN
+        assert where(result, centre + 0.99 * radius * across) == TopAbs_IN
+        assert where(result, centre + 1.01 * radius * across) == TopAbs_OUT
+
+
 # --- one closed solid -------------------------------------------------------
 
 
@@ -265,6 +333,165 @@ def test_a_polygon_profile_sweeps_a_prism_of_planes():
     assert set(result.surfaces()) == {"Plane"}
     assert result.tolerance == 0.0
     assert result.volume() == pytest.approx(1.3 * 6.0 * 10.0, rel=1e-12)
+
+
+# --- the helix, on its own cylinder -----------------------------------------
+
+
+def test_a_spring_is_one_closed_solid():
+    result = brep(spring(wire=1.0, radius=6.0, turns=2.5, height=30.0))
+    assert result.is_closed()
+
+
+def test_a_helix_sweep_is_a_tolerance_declared_bspline_between_two_planes():
+    # No kernel has a closed form for a surface swept along a helix, so
+    # this is the fidelity class OCCT gives any swept feature -- and the
+    # result says so rather than implying exactness it does not have.
+    result = brep(spring())
+    assert sorted(result.surfaces()) == ["BSplineSurface", "Plane", "Plane"]
+    assert result.tolerance == APPROXIMATION
+
+
+def test_the_spring_encloses_the_helix_tube_volume():
+    # pi*a^2*L for a tube about any embedded space curve, and a helix's
+    # length is hypot(2*pi*turns*radius, height) in closed form.
+    for height in (30.0, 12.0):
+        result = brep(spring(wire=1.0, radius=6.0, turns=2.5, height=height))
+        expected = tube_volume(1.0, helix_length(6.0, 2.5, height))
+        assert result.volume() == pytest.approx(expected, rel=1e-6)
+
+
+def test_the_spring_carries_the_helix_tube_area():
+    length = helix_length(6.0, 2.5, 30.0)
+    result = brep(spring())
+    assert result.area() == pytest.approx(
+        2.0 * math.pi * 1.0 * length + 2.0 * math.pi * 1.0, rel=1e-6
+    )
+
+
+def test_the_solid_follows_the_analytic_helix_and_not_a_sampling():
+    # The curve is a 2D line on a Geom_CylindricalSurface, so it is the
+    # analytic helix at every point rather than a chord chain through
+    # `tessellation.path` samples.
+    result = brep(spring(wire=1.0, radius=6.0, turns=2.5, height=30.0, path=3))
+    assert_tube_about(
+        result,
+        helix_centres(6.0, 2.5, 30.0, path=60),
+        helix_tangents(6.0, 2.5, 30.0, path=60),
+        1.0,
+    )
+
+
+def test_the_spring_volume_does_not_follow_the_tessellation():
+    coarse = brep(spring(path=3, profile=5))
+    fine = brep(spring(path=200, profile=256))
+    assert coarse.volume() == pytest.approx(fine.volume(), rel=1e-6)
+
+
+def test_a_left_handed_helix_is_the_mirror_solid():
+    right = brep(spring(turns=2.5))
+    left = brep(spring(turns=-2.5))
+    assert left.volume() == pytest.approx(right.volume(), rel=1e-6)
+
+
+def test_a_helix_that_goes_nowhere_is_refused_as_the_mesh_refuses_it():
+    document = spring(turns=0.0, height=0.0)
+    with pytest.raises(EvaluationError) as caught:
+        brep(document)
+    with pytest.raises(EvaluationError) as mesh:
+        molejo.evaluate(document)
+    assert str(caught.value) == str(mesh.value)
+
+
+# --- the spline, as one B-spline curve --------------------------------------
+
+
+def test_a_loom_is_one_closed_solid():
+    result = brep(loom(), NEAR)
+    assert result.is_closed()
+
+
+def test_a_spline_sweep_is_a_tolerance_declared_bspline_between_two_planes():
+    result = brep(loom(), NEAR)
+    assert sorted(result.surfaces()) == ["BSplineSurface", "Plane", "Plane"]
+    assert result.tolerance == APPROXIMATION
+
+
+def test_the_loom_encloses_the_hermite_tube_volume():
+    result = brep(loom(), NEAR)
+    length = hermite_length(
+        loom_points(NEAR), start_tangent=[0.0, 1.0, 0.0], end_tangent=[0.0, 0.0, -1.0]
+    )
+    assert result.volume() == pytest.approx(tube_volume(2.0, length), rel=1e-6)
+
+
+def test_the_solid_follows_the_hermite_chain_and_not_a_sampling():
+    # The exact curve is the C1 chain of Bezier spans as one cubic
+    # B-spline, so the closed-form Hermite points must lie on its axis at
+    # a resolution the document never declared.
+    result = brep(loom(path=3), NEAR)
+    centres, tangents = hermite_rings(
+        loom_points(NEAR),
+        40,
+        start_tangent=[0.0, 1.0, 0.0],
+        end_tangent=[0.0, 0.0, -1.0],
+    )
+    assert_tube_about(result, centres, tangents, 2.0)
+
+
+def test_the_loom_hits_both_declared_ends():
+    result = brep(loom(), NEAR)
+    points = np.asarray(loom_points(NEAR), dtype=np.float64)
+    # Just inside each cap, along the declared entry and exit directions.
+    assert where(result, points[0] + np.array([0.0, 0.01, 0.0])) == TopAbs_IN
+    assert where(result, points[-1] + np.array([0.0, 0.0, 0.01])) == TopAbs_IN
+    assert where(result, points[0] - np.array([0.0, 0.01, 0.0])) == TopAbs_OUT
+    assert where(result, points[-1] - np.array([0.0, 0.0, 0.01])) == TopAbs_OUT
+
+
+def test_a_spline_may_continue_a_line_without_a_kink():
+    document = loom(
+        points=[[0.0, 90.0, -30.0], [70.0, 175.0, -40.0]],
+        start_tangent=None,
+        end_tangent=[0.0, 0.0, -1.0],
+        lead=[0.0, 20.0, 0.0],
+        profile=6,
+    )
+    result = brep(document)
+    assert result.is_closed()
+    assert sorted(result.surfaces()) == [
+        "BSplineSurface",
+        "Cylinder",
+        "Plane",
+        "Plane",
+    ]
+    start = np.array([0.0, 20.0, 0.0])
+    points = [start, [0.0, 90.0, -30.0], [70.0, 175.0, -40.0]]
+    length = 20.0 + hermite_length(
+        points, incoming=(0.0, 1.0, 0.0), end_tangent=[0.0, 0.0, -1.0]
+    )
+    assert result.volume() == pytest.approx(tube_volume(2.0, length), rel=1e-6)
+
+
+def test_the_loom_volume_does_not_follow_the_tessellation():
+    coarse = brep(loom(path=2, profile=5), NEAR)
+    fine = brep(loom(path=90, profile=256), NEAR)
+    assert coarse.volume() == pytest.approx(fine.volume(), rel=1e-6)
+
+
+def test_a_parameter_moves_the_loom_and_the_counts_mean_nothing_to_it():
+    near = brep(loom(), NEAR)
+    far = brep(loom(), {"head_x": 140.0, "head_y": 190.0, "head_z": -20.0})
+    assert far.volume() != pytest.approx(near.volume(), rel=1e-3)
+
+
+def test_a_spline_cusp_is_refused_as_the_mesh_refuses_it():
+    document = loom(points=[[0.0, 40.0, 0.0], [0.0, 40.0, 0.0]])
+    with pytest.raises(EvaluationError) as caught:
+        brep(document)
+    with pytest.raises(EvaluationError) as mesh:
+        molejo.evaluate(document)
+    assert str(caught.value) == str(mesh.value)
 
 
 # --- the belt ---------------------------------------------------------------
