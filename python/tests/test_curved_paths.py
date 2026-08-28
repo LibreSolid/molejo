@@ -97,6 +97,27 @@ def spring(wire=1.0, radius=6.0, turns=2.5, height=30.0, path=48, profile=24):
 # --- independent closed forms ----------------------------------------------
 
 
+def polygon_area(profile, wire):
+    """The area of the regular M-gon the profile samples to."""
+    return 0.5 * profile * wire * wire * math.sin(2.0 * math.pi / profile)
+
+
+def sampled_volume(profile, wire, chords, tangents):
+    """The volume the sampling describes, in closed form.
+
+    Between two rings the mesh is the M-gon carried along the chord and
+    tilted by half the tangent's turn at each end. Its footprint on the
+    plane across the chord is the M-gon squashed by that half-turn's
+    cosine, and the wall generators are parallel to the chord, so the
+    piece encloses exactly `A * chord * cos(half turn)` -- the mitre neither
+    adds nor removes volume, the squash is the whole of it.
+    """
+    turn = np.arccos(
+        np.clip(np.einsum("ij,ij->i", tangents[:-1], tangents[1:]), -1.0, 1.0)
+    )
+    return float(np.sum(polygon_area(profile, wire) * chords * np.cos(turn / 2.0)))
+
+
 def tube_volume(wire, length):
     """A tube of radius `wire` about a curve of length `length`.
 
@@ -259,22 +280,22 @@ def test_the_joint_rings_are_shared_and_not_duplicated():
 
 
 def test_a_tangent_continuous_joint_shows_no_twist_jump():
-    # The ring before a joint and the ring at it are drawn by different
-    # primitives. When the tangents agree the transport across the joint
-    # is exactly the identity, so the profile must not roll between them.
+    # The rings on either side of a joint are drawn by different
+    # primitives, so a joint is where a seam would show. Follow vertex 0 --
+    # the one in the plane the arc turns in -- from ring to ring: the roll
+    # is zero along both lines, exactly one arc step through the bend, and
+    # neither joint adds a step of its own or skips one.
     path, profile, wire = 4, 8, 1.5
     mesh = molejo.evaluate(bend(wire=wire, path=path, profile=profile))
     rings = rings_of(mesh, profile)
-    centres = rings.mean(axis=1)
-    directions = (rings - centres[:, None, :]) / wire
+    spokes = (rings - rings.mean(axis=1)[:, None, :])[:, 0, :] / wire
+    rolled = np.arccos(np.clip(np.einsum("ij,ij->i", spokes[:-1], spokes[1:]), -1.0, 1.0))
 
-    for joint in (path, 2 * path):
-        turn = np.einsum("ij,ij->i", directions[joint - 1], directions[joint])
-        # The frame turns with the tangent between rings inside a
-        # primitive; across these joints the tangent does not turn, so
-        # vertex j of one ring points exactly where vertex j of the other
-        # does.
-        assert turn == pytest.approx(np.ones(profile), abs=1e-12), f"ring {joint}"
+    step = QUARTER / path
+    expected = np.concatenate(
+        [np.zeros(path), np.full(path, step), np.zeros(path)]
+    )
+    assert rolled == pytest.approx(expected, abs=1e-12)
 
 
 def test_the_bend_is_watertight_and_winds_outward():
@@ -337,15 +358,24 @@ def test_every_arc_ring_is_a_circle_perpendicular_to_the_tangent():
     ), "every ring lies in the plane perpendicular to the analytic tangent"
 
 
-def test_the_arc_encloses_the_tube_volume_the_sampling_describes():
+def test_the_arc_encloses_the_volume_the_sampling_describes_exactly():
     radius, wire, path, profile, angle = 6.0, 1.5, 24, 48, QUARTER
     mesh = molejo.evaluate(
         elbow(angle=angle, wire=wire, radius=radius, path=path, profile=profile)
     )
+    # For a planar arc the two mitres are exactly the arc's own step, so
+    # the closed form collapses to N * A * R * sin(step) and holds to the
+    # last bit -- the arc's answer to the cylinder's prism volume.
+    step = angle / path
+    exact = path * polygon_area(profile, wire) * radius * math.sin(step)
+    assert signed_volume(mesh) == pytest.approx(exact, rel=1e-12)
+
     analytic = tube_volume(wire, radius * angle)
-    sampled = analytic * (1.0 - chord_deficit(profile)) * (1.0 - chord_shortfall(angle / path))
-    assert signed_volume(mesh) == pytest.approx(sampled, rel=1e-3)
     assert signed_volume(mesh) < analytic, "an inscribed sampling cannot exceed the tube"
+    assert signed_volume(mesh) == pytest.approx(
+        analytic * (1.0 - chord_deficit(profile)) * (1.0 - chord_shortfall(step)),
+        rel=1e-3,
+    )
 
 
 def test_sliding_the_declared_centre_along_the_axis_changes_nothing():
@@ -491,12 +521,17 @@ def test_the_helix_encloses_the_tube_volume_the_sampling_describes():
         )
     )
     analytic = tube_volume(wire, helix_length(radius, turns, height))
-    sampled = (
-        tube_volume(wire, path * helix_chord(radius, turns, height, path))
-        * (1.0 - chord_deficit(profile))
+    sampled = sampled_volume(
+        profile,
+        wire,
+        np.full(path, helix_chord(radius, turns, height, path)),
+        helix_tangents(radius, turns, height, path),
     )
     assert watertight_failures(mesh.faces) == []
-    assert signed_volume(mesh) == pytest.approx(sampled, rel=1e-3)
+    # Not exact as the arc's is: a helix's mitre planes are not quite
+    # square to its chords, and the residual falls away as the cube of the
+    # sampling (1.4e-5 here, 3.4e-8 at eight times the rings).
+    assert signed_volume(mesh) == pytest.approx(sampled, rel=1e-4)
     assert signed_volume(mesh) < analytic, "an inscribed sampling cannot exceed the tube"
 
 

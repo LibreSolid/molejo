@@ -22,18 +22,20 @@ place they live:
   carries a constant frame.
 * Circle profile vertex *j* of *M* sits at angle ``2*pi*j/M``, at
   ``cos*x + sin*y`` in the profile frame.
-* ``tessellation.path`` is a segment count *N*: an open path has
-  ``N + 1`` rings. Wall vertex ``ring*M + j``; then the start-cap centre,
-  then the end-cap centre.
+* ``tessellation.path`` is a segment count *N* spent on *each* path
+  primitive: a chain of *k* primitives has ``k*N + 1`` rings, and the
+  ring at a joint is sampled once, by the primitive that leaves it. Wall
+  vertex ``ring*M + j``; then the start-cap centre, then the end-cap
+  centre.
 * Faces run walls first (ring-major, then *j*, two triangles a quad),
   then the start-cap fan, then the end-cap fan. Winding is outward
   throughout: the start cap faces ``-tangent`` and the end cap
   ``+tangent``.
 
-What this build evaluates is the circle profile swept along a single
-line. Every other primitive raises :class:`NotImplementedError` naming
-itself rather than guessing; the arc, helix, wrap and spline batches
-fill them in against fixtures.
+What this build evaluates is a circle profile swept along a chain of
+``line``, ``arc`` and ``helix`` primitives. Every other primitive raises
+:class:`NotImplementedError` naming itself rather than guessing; the
+wrap and spline batches fill them in against fixtures.
 """
 
 import math
@@ -236,23 +238,65 @@ def _profile_points(profile, values, count):
 
 
 def _sample_path(path, values, segments):
-    """The path as ``segments + 1`` frames, evenly spaced along it.
+    """The path as ``k * segments + 1`` frames, ``segments`` per primitive.
 
     Returns the ring centres ``(R, 3)`` and their profile axes ``(R, 2, 3)``.
+
+    ``tessellation.path`` is spent on every primitive of the chain rather
+    than divided among them: an arc-length-proportional split would make
+    the ring count follow a parameter, which declared tessellation
+    forbids. A primitive begins where its predecessor ended -- no
+    primitive says where it starts -- so the ring at a joint is sampled
+    once, by the primitive that leaves it, and the frame carried across
+    is exactly the identity when the tangents agree.
     """
-    if len(path) != 1:
-        raise NotImplementedError(
-            f"path: this molejo build does not distribute tessellation.path across "
-            f"a multi-primitive path ({len(path)} primitives) yet"
+    frame = START_FRAME
+    centres, axes = [], []
+    for index, primitive in enumerate(path):
+        loc = f"path[{index}]"
+        kind = primitive["type"]
+        sampler = _SAMPLERS.get(kind)
+        if sampler is None:
+            raise NotImplementedError(
+                f"{loc}: the '{kind}' path primitive is not implemented yet; this "
+                f"molejo build evaluates 'line', 'arc' and 'helix' only"
+            )
+        primitive_centres, primitive_axes, frame = sampler(
+            primitive, values, segments, frame, loc
         )
-    primitive = path[0]
-    kind = primitive["type"]
-    if kind != "line":
-        raise NotImplementedError(
-            f"path[0]: the '{kind}' path primitive is not implemented yet; this "
-            f"molejo build evaluates 'line' only"
-        )
-    return _sample_line(primitive, values, segments, START_FRAME, "path[0]")
+        # The last ring of every primitive but the final one is the joint
+        # ring, and belongs to the primitive that leaves it.
+        keep = None if index == len(path) - 1 else -1
+        centres.append(primitive_centres[:keep])
+        axes.append(primitive_axes[:keep])
+    return np.concatenate(centres), np.concatenate(axes)
+
+
+def _held(frame, segments):
+    """The profile axes of a primitive whose frame does not turn."""
+    axes = np.empty((segments + 1, 2, 3), dtype=np.float64)
+    axes[:, 0, :] = frame.x
+    axes[:, 1, :] = frame.y
+    return axes
+
+
+def _carried(frame, centres, tangents):
+    """The profile axes along a turning primitive, ring by ring.
+
+    Transport is composed step by step rather than taken in one jump from
+    the incoming frame: that is the discrete rotation-minimizing frame,
+    and it is what a curve turning under the profile means. For an arc the
+    two agree exactly -- every tangent lies in the plane perpendicular to
+    the arc's axis, so every step turns about that same axis -- and for a
+    helix, whose tangents trace a cone, only the composition is
+    rotation-minimizing.
+    """
+    axes = np.empty((len(centres), 2, 3), dtype=np.float64)
+    for ring, tangent in enumerate(tangents):
+        frame = transport(frame, tangent, centres[ring])
+        axes[ring, 0, :] = frame.x
+        axes[ring, 1, :] = frame.y
+    return axes, frame
 
 
 def _sample_line(primitive, values, segments, frame, loc):
@@ -270,14 +314,108 @@ def _sample_line(primitive, values, segments, frame, loc):
         raise EvaluationError(
             f"{loc}.to: a line must go somewhere; its end coincides with its start"
         )
-    frame = transport(frame, direction / length)
+    frame = transport(frame, direction / length, end)
 
     steps = np.arange(segments + 1, dtype=np.float64) / segments
     centres = start + steps[:, None] * direction
-    axes = np.empty((segments + 1, 2, 3), dtype=np.float64)
-    axes[:, 0, :] = frame.x
-    axes[:, 1, :] = frame.y
-    return centres, axes
+    return centres, _held(frame, segments), frame
+
+
+def _sample_arc(primitive, values, segments, frame, loc):
+    """The current point turned about the axis line through ``center``.
+
+    Only the component of ``start - center`` across the axis turns, so
+    ``center`` names an axis line rather than a point the arc must reach.
+    Ring *i* of *N* sits at ``phi = i*angle/N`` on that circle, and the
+    tangent is the circle's, signed by the direction of the turn.
+    """
+    center = _resolve_vector(primitive["center"], values, f"{loc}.center")
+    axis = _resolve_vector(primitive["axis"], values, f"{loc}.axis")
+    angle = _resolve(primitive["angle"], values, f"{loc}.angle")
+
+    length = float(np.linalg.norm(axis))
+    if length <= 0.0:
+        raise EvaluationError(
+            f"{loc}.axis: an arc needs an axis to turn about; its axis has no direction"
+        )
+    axis = axis / length
+
+    spoke = frame.origin - center
+    axial = float(np.dot(spoke, axis)) * axis
+    spoke = spoke - axial
+    radius = float(np.linalg.norm(spoke))
+    if radius <= 0.0:
+        raise EvaluationError(
+            f"{loc}.center: an arc needs a radius to turn on; its start point lies "
+            f"on its axis"
+        )
+    if angle == 0.0:
+        raise EvaluationError(
+            f"{loc}.angle: an arc must turn somewhere; its angle is 0"
+        )
+
+    radial = spoke / radius
+    tangential = np.cross(axis, radial)
+    turn = angle * np.arange(segments + 1, dtype=np.float64) / segments
+    cosine = np.cos(turn)[:, None]
+    sine = np.sin(turn)[:, None]
+
+    centres = center + axial + radius * (cosine * radial + sine * tangential)
+    sign = 1.0 if angle > 0.0 else -1.0
+    tangents = sign * (cosine * tangential - sine * radial)
+    axes, frame = _carried(frame, centres, tangents)
+    return centres, axes, frame
+
+
+def _sample_helix(primitive, values, segments, frame, loc):
+    """A helix winding about the incoming tangent, from the current point.
+
+    Its axis is the line through ``origin - radius * x`` along the
+    tangent, so the helix starts exactly where the path is; it winds
+    right-handed (the frame's *x* turning toward its *y*) and advances
+    ``height`` over ``turns`` turns. The speed is constant, so rings
+    uniform in the turn parameter are uniform in arc length.
+    """
+    radius = _resolve(primitive["radius"], values, f"{loc}.radius")
+    turns = _resolve(primitive["turns"], values, f"{loc}.turns")
+    height = _resolve(primitive["height"], values, f"{loc}.height")
+
+    if radius <= 0.0:
+        raise EvaluationError(
+            f"{loc}.radius: must be a positive number, got {_describe(radius)}"
+        )
+    around = 2.0 * math.pi * turns * radius
+    speed = math.hypot(around, height)
+    if speed <= 0.0:
+        raise EvaluationError(
+            f"{loc}: a helix must go somewhere; it makes 0 turns and rises 0"
+        )
+
+    axis_point = frame.origin - radius * frame.x
+    steps = np.arange(segments + 1, dtype=np.float64) / segments
+    turn = 2.0 * math.pi * turns * steps
+    cosine = np.cos(turn)[:, None]
+    sine = np.sin(turn)[:, None]
+
+    centres = (
+        axis_point
+        + radius * (cosine * frame.x + sine * frame.y)
+        + (height * steps)[:, None] * frame.tangent
+    )
+    tangents = (
+        around * (-sine * frame.x + cosine * frame.y) + height * frame.tangent
+    ) / speed
+    axes, frame = _carried(frame, centres, tangents)
+    return centres, axes, frame
+
+
+#: The path primitives this build evaluates. A primitive missing from here
+#: is valid v1 vocabulary that raises naming itself.
+_SAMPLERS = {
+    "line": _sample_line,
+    "arc": _sample_arc,
+    "helix": _sample_helix,
+}
 
 
 # --- mesh assembly ---------------------------------------------------------

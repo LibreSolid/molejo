@@ -288,10 +288,22 @@ def test_an_authored_shape_and_its_document_evaluate_identically():
 
 
 def test_evaluating_an_unimplemented_primitive_names_it():
+    loom = Shape(
+        profile=Circle(radius=2.0),
+        path=[Spline(points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)])],
+        path_samples=8,
+        profile_samples=16,
+    )
     with pytest.raises(NotImplementedError) as caught:
-        spring().evaluate(height=46.8)
-    assert "helix" in str(caught.value)
+        loom.evaluate()
+    assert "spline" in str(caught.value)
     assert "not implemented" in str(caught.value)
+
+
+def test_the_canonical_spring_evaluates():
+    # The shape the README advertises, at the resolution it declares.
+    mesh = spring().evaluate(height=46.8)
+    assert mesh.vertices.shape == (241 * 16 + 2, 3)
 
 
 # --- package surface -------------------------------------------------------
