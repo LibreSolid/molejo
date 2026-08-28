@@ -67,6 +67,32 @@ The v1 vocabulary is the empirically demanded set: `line`, `arc`,
 primitive per demonstrated need, because each addition is paid for
 twice plus a parity fixture.
 
+**Teeth are path modulation with a declared count.** A toothed belt is
+the constant cross-section profile swept along the wrap, with teeth as
+a declared periodic pattern displacing the profile's inner face along
+arc length. The count is declared, so tooth count — hence vertex count
+and ordering — never varies with parameters; the anchor (open belt
+clamped to a carriage, arc-length origin at the clamp) or phase
+(closed loop, pattern circulates) only slides the pattern. v1 flanks
+are trapezoidal: piecewise-linear teeth keep every face of a toothed
+belt analytic in B-rep (planes, cylinder and torus patches); curved
+HTD-style flanks would drop tooth surfaces into the B-spline class and
+wait for a project to demand them. Pilot-approved working answer for
+the wrap signature (tasks 4.1–4.2 confirm against Metamaquina2
+geometry):
+
+    Wrap(
+        around=[dict(center=(0.0, 0.0), radius=5.1),      # motor pulley
+                dict(center=(0.0, 210.0), radius=5.1)],   # idler
+        teeth=Teeth(pitch=2.5, height=0.7, flank="trapezoid", count=180),
+        anchor=dict(span=0, at=P.y),   # open: ends clamped to carriage
+    )                                  # closed loop: phase=P.travel instead
+
+The motor, gear, and pulley stay consumer-side: one driver (motor
+angle) feeds the rigid pulley rotation, the rigid carriage translation,
+and the belt's `y` through the consumer's own expressions, so teeth
+stay meshed with no constraint solving.
+
 **Numeric slots are literals or parameter references — nothing else.**
 A slot is a number or `{"param": name}`. Arithmetic over parameters
 (e.g. pitch derived from free length and lift) is the consumer's
@@ -128,10 +154,12 @@ represents shapes it can define analytically.
 
 ## Open Questions
 
-- `wrap` parameterization: tangent-line/arc wrapping around an ordered
-  set of circles is well-defined, but the phase convention (tooth
-  pattern circulation) and the open-span anchor (belt clamped to a
-  carriage) need concrete signatures; the belt validation case decides.
+- `wrap` residual details (the working answer above settles the
+  shape): whether `anchor` and `phase` are separate slots or one
+  convention, side flags for crossed/serpentine belts, whether
+  `samples_per_tooth` replaces `path_samples` on toothed wraps, and
+  whether `Teeth(count=…)` is declared free-standing or validated
+  against wrap length; the belt validation case decides.
 - Spline flavor for v1: Catmull-Rom through designer points vs cubic
   Bézier with explicit tangents. The loom validation case decides; both
   are pure arithmetic and parity-safe.
