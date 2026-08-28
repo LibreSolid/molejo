@@ -41,9 +41,11 @@ export class SpecError extends Error {
 // --- describing values in messages ------------------------------------
 //
 // Messages must be byte-identical to the Python validator's, so values are
-// described by JSON kind rather than by any runtime's type names.
+// described by JSON kind rather than by any runtime's type names. `kindOf`
+// is exported for the evaluator, which owes the same identity for the
+// failures only parameter values can reveal.
 
-function kindOf(value) {
+export function kindOf(value) {
   if (value === null || value === undefined) return 'null';
   if (typeof value === 'boolean') return 'a boolean';
   if (typeof value === 'number') return 'a number';
