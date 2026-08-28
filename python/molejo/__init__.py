@@ -36,6 +36,7 @@ from .authoring import (
     Teeth,
     Wrap,
 )
+from .evaluator import EvaluationError, Mesh, evaluate
 from .spec import SPEC_VERSION, SpecError, parameter_names, validate
 
 __author__ = "Luis Henrique Cassis Fagundes"
@@ -46,8 +47,10 @@ __all__ = [
     "SPEC_VERSION",
     "Arc",
     "Circle",
+    "EvaluationError",
     "Helix",
     "Line",
+    "Mesh",
     "P",
     "ParamRef",
     "Polygon",
@@ -56,6 +59,7 @@ __all__ = [
     "Spline",
     "Teeth",
     "Wrap",
+    "evaluate",
     "parameter_names",
     "validate",
 ]

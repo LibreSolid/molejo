@@ -430,5 +430,12 @@ class Shape(_Element):
     # -- evaluation ---------------------------------------------------------
 
     def evaluate(self, **values):
-        """Evaluate the shape at the given parameter values."""
-        raise NotImplementedError("evaluation is not implemented yet")
+        """Evaluate the shape at the given parameter values.
+
+        Exactly the evaluation of the canonical document this shape
+        serializes to: authoring is sugar over the representation, never a
+        second path into the geometry.
+        """
+        from .evaluator import evaluate
+
+        return evaluate(self.to_dict(), values)

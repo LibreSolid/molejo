@@ -271,12 +271,27 @@ def test_a_parameter_reference_is_not_a_dunder_factory():
         P.__wrapped__
 
 
-# --- evaluation is the next batch -----------------------------------------
+# --- authoring meets evaluation --------------------------------------------
 
 
-def test_evaluate_is_not_implemented_yet():
-    with pytest.raises(NotImplementedError, match="not implemented"):
+def test_an_authored_shape_and_its_document_evaluate_identically():
+    shape = Shape(
+        profile=Circle(radius=2.0),
+        path=[Line(to=(0.0, 0.0, P.height))],
+        path_samples=8,
+        profile_samples=16,
+    )
+    authored = shape.evaluate(height=46.8)
+    parsed = molejo.evaluate(json.loads(shape.to_json()), {"height": 46.8})
+    assert authored.vertices.tobytes() == parsed.vertices.tobytes()
+    assert authored.faces.tobytes() == parsed.faces.tobytes()
+
+
+def test_evaluating_an_unimplemented_primitive_names_it():
+    with pytest.raises(NotImplementedError) as caught:
         spring().evaluate(height=46.8)
+    assert "helix" in str(caught.value)
+    assert "not implemented" in str(caught.value)
 
 
 # --- package surface -------------------------------------------------------
