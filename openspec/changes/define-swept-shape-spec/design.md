@@ -77,6 +77,16 @@ already trusts. This keeps molejo's contract pure (spec + values →
 vertices), keeps parity surface minimal, and avoids inventing a second
 expression language beside the consumer's.
 
+**Python-first authoring; JSON is the representation.** Authors write
+shapes in Python — vocabulary constructors (`Circle`, `Helix`, …) plus
+the `P.name` parameter-reference accessor — and `to_json()` emits the
+canonical document. JSON is the interchange both evaluators consume: a
+hand-written document is equally valid, and the JS package stays
+evaluation-only with no authoring layer. The sugar cannot smuggle in an
+expression language: a parameter reference refuses arithmetic and
+comparison operators with an error telling the author to compute the
+number in ordinary Python and bind it at evaluation.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 

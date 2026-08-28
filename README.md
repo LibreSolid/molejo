@@ -23,6 +23,33 @@ construction — tessellation is fixed and declared in the spec, never
 curvature-adaptive — and are pinned to each other by shared parity
 fixtures.
 
+## What it looks like
+
+Authoring is Python-first; the JSON spec is the representation it
+serializes to (API sketch — pre-alpha, see `openspec/changes/`):
+
+```python
+from molejo import Shape, Circle, Helix, P
+
+spring = Shape(
+    profile=Circle(radius=2.0),
+    path=[Helix(radius=14.0, turns=6.5, height=P.height)],
+    path_samples=240, profile_samples=16,
+)
+
+mesh = spring.evaluate(height=46.8)   # numpy vertices and faces
+spring.to_json()                      # the spec — what a browser gets
+```
+
+`P.height` is a plain reference, not an expression: derived values
+(`free_length - lift`) are computed in ordinary Python and bound at
+evaluation. The browser side consumes the serialized spec only:
+
+```js
+import { evaluate } from 'molejo';
+evaluate(spec, { height: 50.0 - lift(t) }, buffers); // per frame, in place
+```
+
 ## Why
 
 CAD kernels represent rigid geometry; animation systems interpolate

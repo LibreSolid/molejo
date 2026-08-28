@@ -9,6 +9,11 @@
 - [ ] 1.3 Implement schema parsing and the same validations in JS;
       shared invalid-document fixtures under `fixtures/invalid/` run
       red on both sides first.
+- [ ] 1.4 Red: Python authoring constructors (`Shape`, profiles, path
+      primitives, `P`) serialize to exactly the canonical JSON of the
+      equivalent hand-written spec; a parameter reference used in
+      arithmetic raises.
+- [ ] 1.5 Implement the authoring layer over the schema model.
 
 ## 2. First vertical slice: circle profile, line path
 
