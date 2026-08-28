@@ -129,6 +129,36 @@ expression language: a parameter reference refuses arithmetic and
 comparison operators with an error telling the author to compute the
 number in ordinary Python and bind it at evaluation.
 
+**Validation is structural, total, and locates the offending element.**
+Settled while implementing the schema (tasks 1.1–1.5), and binding on
+both runtimes:
+
+- Validation needs no parameter values. It answers one question — is
+  this a v1 molejo document — and stops at the *first* offending
+  element, naming it by its position in the document
+  (`path[1].to[2]`, `tessellation.profile`, `path[0].teeth.flank`).
+- A dangling parameter reference is therefore *not* a structural error;
+  it is an evaluation error. The schema model instead exposes the set
+  of names a document references (`Shape.params` in Python,
+  `parameterNames` in JS) so a caller can see what it must bind.
+- The vocabulary is closed at every level: profile types, path
+  primitive types, tooth flanks — and unknown *fields* are rejected
+  wherever they appear, not only at the top level. A typo cannot be
+  silently ignored by an evaluator that happens not to read that slot.
+- The counts that fix topology — `tessellation.path`,
+  `tessellation.profile`, `teeth.count`, and `anchor.span` — are
+  literal integers and may never be parameter references. A parametric
+  count would make vertex count follow a parameter, which the
+  fixed-tessellation decision forbids; rejecting it structurally means
+  no evaluator has to.
+- `loop` is optional on input (default false) and always emitted by the
+  authoring layer, so the canonical document is unambiguous.
+- Error messages are identical in both runtimes, not merely equivalent:
+  values are described by JSON kind ("a string", "an object") rather
+  than by any runtime's type names. The shared fixtures assert the
+  substrings that matter; message identity is what the fixtures make
+  cheap to keep.
+
 **Dual implementation over shared-runtime alternatives.** Two rejected
 crossings, recorded because they were genuinely weighed:
 

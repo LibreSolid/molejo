@@ -90,9 +90,13 @@ needed.
 ## Status
 
 Pre-alpha. Spec version 1 — profiles (circle, polygon) and path
-primitives (line, arc, helix, wrap, spline) — is under design; see
-`openspec/changes/`. Nothing is published yet; `molejo` on PyPI
-(`python/`) and npm (`js/`) is reserved for this project.
+primitives (line, arc, helix, wrap, spline) — is defined, and both
+packages parse and validate the document against shared fixtures; the
+Python package also authors it (`Shape`, `Circle`, …, `P`). No
+evaluator is implemented yet: `evaluate` raises on both sides, so the
+sample above is the target, not a promise. See `openspec/changes/`.
+Nothing is published yet; `molejo` on PyPI (`python/`) and npm (`js/`)
+is reserved for this project.
 
 ## Origin
 

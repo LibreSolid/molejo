@@ -1,19 +1,24 @@
 ## 1. Spec schema and validation
 
-- [ ] 1.1 Red: a schema document with an unknown primitive, a dangling
-      parameter reference, an open profile, or missing tessellation
-      counts is rejected with an error naming the offending slot.
-- [ ] 1.2 Implement the schema model and validator in Python
+- [x] 1.1 Red: a schema document with an unknown primitive, an unknown
+      profile, a profile that cannot close (a polygon of fewer than
+      three points), or missing tessellation counts is rejected with an
+      error naming the offending slot. A dangling parameter reference
+      is *not* a structural error — it is an evaluation error, and the
+      schema model instead exposes the referenced names (see
+      design.md, "Validation is structural, total, and locates the
+      offending element").
+- [x] 1.2 Implement the schema model and validator in Python
       (`molejo.spec`): version tag, profile, path chain, parameter
       references, declared tessellation counts.
-- [ ] 1.3 Implement schema parsing and the same validations in JS;
+- [x] 1.3 Implement schema parsing and the same validations in JS;
       shared invalid-document fixtures under `fixtures/invalid/` run
       red on both sides first.
-- [ ] 1.4 Red: Python authoring constructors (`Shape`, profiles, path
+- [x] 1.4 Red: Python authoring constructors (`Shape`, profiles, path
       primitives, `P`) serialize to exactly the canonical JSON of the
       equivalent hand-written spec; a parameter reference used in
       arithmetic raises.
-- [ ] 1.5 Implement the authoring layer over the schema model.
+- [x] 1.5 Implement the authoring layer over the schema model.
 
 ## 2. First vertical slice: circle profile, line path
 
