@@ -147,11 +147,32 @@
 
 ## 8. Validation cases (consumer-side, evidence recorded here)
 
-- [ ] 8.1 Valve spring: helix spec driven by one lift parameter renders
+- [x] 8.1 Valve spring: helix spec driven by one lift parameter renders
       and animates in the consuming framework's viewer, and its B-rep
       evaluation passes an exact-shape assertion in the consumer's
       test suite.
-- [ ] 8.2 Belt: wrap spec with circulating phase and carriage-anchored
+  - Evidence (2026-08-29): solid-node's `flexible-leaf-node` change
+      adapts molejo as its flexible leaf (`MolejoNode`, port-fed
+      parameters, spec-carried documents). Viewer: headless-Chromium
+      drive of the framework's spring fixture — `setDriver(lift, 12)`
+      compresses 50.749 mm → 38.776 mm with vertex count, index and
+      backing `Float32Array` identical (in-place refill observed live).
+      Consumer suite: v8-engine branch `molejo` (`ef0b046`) models all
+      16 valve springs; at full lift each asserts non-intersection
+      against valve, retainer and head on OCCT solids from
+      `molejo.brep`, with AABBs proven overlapping so only the exact
+      kernel can answer. 36/36 green.
+- [x] 8.2 Belt: wrap spec with circulating phase and carriage-anchored
       span validates against the belt case.
+  - Evidence (2026-08-29): Metamaquina2 branch `molejo` (`480ed1f`)
+      models both driven axes' GT2 belts as wraps from the design's own
+      pulley geometry — X 404 teeth, Y 477 over a three-circle loop —
+      with `anchor.at` bound to each carriage's driver expression;
+      teeth travel with the carriage (sentinel-vertex assertions),
+      21/21 green, document version 3 with two flexible nodes. API
+      findings fed back: a public tangent-station helper would spare
+      consumers re-deriving the external-tangent formula, and
+      per-element `tessellation.path` over-samples short arcs (the
+      19 mm end arc gets the 375 mm run's count).
 - [ ] 8.3 Loom/filament: spline spec driven by three axis parameters
       validates the K^d claim — no sampling anywhere.
