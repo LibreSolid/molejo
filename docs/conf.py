@@ -8,12 +8,14 @@ project = "molejo"
 author = "Luis Henrique Cassis Fagundes"
 copyright = "2026, Luis Henrique Cassis Fagundes"
 
-try:
-    from importlib.metadata import version as _distribution_version
+# The version comes from the source tree, not the installed distribution:
+# a stale editable install must not be able to put an old number on the
+# manual. Read the Docs builds from the same checkout, so the two agree.
+import pathlib
+import re
 
-    release = _distribution_version("molejo")
-except Exception:
-    release = "0.1.0"
+_init = pathlib.Path(__file__).parent.parent / "python" / "molejo" / "__init__.py"
+release = re.search(r'__version__ = "([^"]+)"', _init.read_text()).group(1)
 version = release
 
 extensions = [
