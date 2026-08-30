@@ -8,7 +8,7 @@ A molejo shape is a serializable spec -- a planar profile swept along a
 parametric path whose numeric slots may reference named scalar
 parameters. This package is the Python side: the authoring layer that
 writes the spec, and the evaluator that turns spec plus parameter values
-into a deterministic triangle mesh.
+into a deterministic triangle mesh::
 
     from molejo import Shape, Circle, Line, P
 
@@ -55,7 +55,7 @@ from .spec import SPEC_VERSION, SpecError, parameter_names, validate
 
 __author__ = "Luis Henrique Cassis Fagundes"
 __email__ = "lhfagundes@gmail.com"
-__version__ = "0.0.1.dev0"
+__version__ = "0.1.0"
 
 __all__ = [
     "SPEC_VERSION",

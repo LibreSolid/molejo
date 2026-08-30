@@ -1,6 +1,6 @@
 {
   "name": "molejo",
-  "version": "0.0.1-dev.0",
+  "version": "0.1.0",
   "description": "Analytic flexible parts for mechanical CAD: parametric swept shapes evaluated identically in Python and the browser",
   "license": "Apache-2.0",
   "author": "Luis Henrique Cassis Fagundes <lhfagundes@gmail.com>",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molejo"
-version = "0.0.1.dev0"
+version = "0.1.0"
 description = "Analytic flexible parts for mechanical CAD: parametric swept shapes evaluated identically in Python and the browser"
 # `README.md`, `LICENSE` and `NOTICE` here are symlinks to the repository
 # root's: one package directory of a two-package repository does not own
@@ -23,7 +23,7 @@ dependencies = [
 classifiers = [
     # No `License ::` classifier: the SPDX `license` expression above is the
     # licence declaration, and metadata 2.4 forbids stating it twice.
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Manufacturing",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Computer Aided Design (CAD)",
@@ -39,6 +39,7 @@ brep = [
 
 [project.urls]
 Homepage = "https://github.com/LibreSolid/molejo"
+Documentation = "https://molejo.readthedocs.io"
 
 [tool.setuptools.packages.find]
 include = ["molejo", "molejo.*"]

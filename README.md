@@ -26,10 +26,12 @@ construction — tessellation is fixed and declared in the spec, never
 curvature-adaptive — and are pinned to each other by shared parity
 fixtures.
 
+Full documentation: <https://molejo.readthedocs.io>
+
 ## What it looks like
 
 Authoring is Python-first; the JSON spec is the representation it
-serializes to (API sketch — pre-alpha, see `openspec/changes/`):
+serializes to:
 
 ```python
 from molejo import Shape, Circle, Helix, P
@@ -89,10 +91,10 @@ needed.
 
 ## Status
 
-Pre-alpha. Spec version 1 — profiles (circle, polygon) and path
-primitives (line, arc, helix, wrap, spline) — is defined, and both
-packages parse and validate the document against shared fixtures; the
-Python package also authors it (`Shape`, `Circle`, …, `P`).
+Version 0.1.0, implementing spec version 1: profiles (circle, polygon)
+and path primitives (line, arc, helix, spline, wrap). Both packages
+parse and validate the document against shared fixtures; the Python
+package also authors it (`Shape`, `Circle`, …, `P`).
 
 Circle and polygon profiles swept along the whole v1 path vocabulary —
 `line`, `arc`, `helix`, `spline` and `wrap` — evaluate in both runtimes,
@@ -102,8 +104,8 @@ reusable three.js buffers, pinned to each other by shared parity
 fixtures. The spring in the sample above is one of those fixtures rather
 than a promise, and so are a toothed belt around three pulleys whose
 teeth circulate with a parameter and a filament loom whose head follows
-three. What remains raises naming itself: closing a loop that is not a
-wrap. See `openspec/changes/`.
+three. The one gap in the v1 vocabulary raises naming itself: closing a
+loop that is not a wrap.
 
 The B-rep evaluator installs with `pip install molejo[brep]` and
 evaluates the same documents to closed OCCT solids —
@@ -113,25 +115,23 @@ is checked through it on volume and area. An install without the extra
 imports and meshes and exports STL exactly as before; asking it for a
 solid raises naming the extra.
 
-Both packages build and install. `python/` produces a wheel and an sdist
-(`molejo`, numpy only, `molejo[brep]` for the kernel) and `js/` an npm
-tarball of plain ESM with no dependencies and no build step;
-`scripts/check-dist` is the release dry-run that proves it, installing
-each package into a throwaway environment outside this repository and
-evaluating the same cylinder fixture there, within the tolerance that
-fixture declares for that runtime.
+molejo 0.1 has done real work before being called a release: it is the
+flexible-part representation of [solid-node](https://github.com/LibreSolid/solid-node)
+machine models, where its springs and belts hold up in animated,
+geometrically tested engines and 3D printers (a V8 engine's valve
+springs, a Metamaquina 2's drive belts) rather than only in this
+repository's fixtures.
 
-A package version carries the spec version it implements. Today both
-carry spec v1 at `0.0.1-dev` — `0.0.1.dev0` for Python and `0.0.1-dev.0`
-for npm, the two registries' spellings of one version — and the two
-packages release together for a given spec version. One document,
-two implementations: neither runtime is ever published against a spec
-version the other has not caught up to.
+A package version carries the spec version it implements. Both packages
+carry spec v1 at `0.1.0` and release together for a given spec version.
+One document, two implementations: neither runtime is ever published
+against a spec version the other has not caught up to.
 
-Nothing is published. `molejo` on PyPI (`python/`) and npm (`js/`) is
-reserved for this project, and publishing to either is the maintainer's
-explicit decision, never a side effect of building: the dry-run packs,
-installs and checks, and uploads nothing.
+Publishing to PyPI (`python/`) and npm (`js/`) is the maintainer's
+explicit decision, never a side effect of building: `scripts/check-dist`,
+the release dry-run, packs each package, installs it into a throwaway
+environment outside this repository and evaluates a fixture there — and
+uploads nothing.
 
 ## Origin
 

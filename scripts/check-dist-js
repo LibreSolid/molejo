@@ -27,7 +27,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="0.0.1-dev.0"
+version="0.1.0"
 tarball_name="molejo-${version}.tgz"
 
 scratch="$(mktemp -d -t molejo-dist-js-XXXXXX)"

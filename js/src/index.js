@@ -20,4 +20,4 @@ export {
 
 export { EvaluationError, NotImplementedError, evaluate } from './evaluate.js';
 
-export const VERSION = '0.0.1-dev.0';
+export const VERSION = '0.1.0';
