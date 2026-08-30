@@ -102,18 +102,25 @@ def tooth_breaks(origin, period, total):
 
 
 def trace_point(item, distance, across):
-    """A point of the belt's trace at local *x* = ``across``."""
+    """A point of the belt's trace at local *x* = ``across``.
+
+    On an arc the profile's local *x* is the circle's outward radial
+    where the belt turns clockwise about it and its inward radial where
+    the belt turns the other way, so the offset is signed by the sense,
+    and so is the way the angle advances.
+    """
     if item["kind"] == "span":
         normal = item["normal"]
         along = np.array([normal[1], -normal[0]])
         return item["start"] + distance * along + across * normal
-    angle = item["from"] - distance / item["radius"]
-    return item["centre"] + (item["radius"] + across) * np.array(
+    sense = item["sense"]
+    angle = item["from"] - sense * distance / item["radius"]
+    return item["centre"] + (item["radius"] + sense * across) * np.array(
         [math.cos(angle), math.sin(angle)]
     )
 
 
-def trace_area(circles, across, teeth=None, origin=0.0):
+def trace_area(circles, across, teeth=None, origin=0.0, toward=-1.0):
     """The signed area the belt's trace at local *x* encloses.
 
     Green's theorem, piece by piece. A span's trace is straight even where
@@ -132,7 +139,9 @@ def trace_area(circles, across, teeth=None, origin=0.0):
     def offset(station):
         if teeth is None:
             return across
-        return across - teeth["height"] * modulation(station, origin, period)
+        return across + toward * teeth["height"] * modulation(
+            station, origin, period
+        )
 
     area = 0.0
     for item in items:
@@ -147,10 +156,10 @@ def trace_area(circles, across, teeth=None, origin=0.0):
                 b = trace_point(item, there - start, far)
                 area += 0.5 * (a[0] * b[1] - b[0] * a[1])
                 continue
-            centre, radius = item["centre"], item["radius"]
-            ta = item["from"] - (here - start) / radius
-            tb = item["from"] - (there - start) / radius
-            ra, rb = radius + near, radius + far
+            centre, radius, sense = item["centre"], item["radius"], item["sense"]
+            ta = item["from"] - sense * (here - start) / radius
+            tb = item["from"] - sense * (there - start) / radius
+            ra, rb = radius + sense * near, radius + sense * far
             area += 0.5 * (
                 (tb - ta) * (ra * ra + ra * rb + rb * rb) / 3.0
                 + centre[0] * (rb * math.sin(tb) - ra * math.sin(ta))
@@ -159,14 +168,28 @@ def trace_area(circles, across, teeth=None, origin=0.0):
     return area
 
 
-def belt_volume(circles, section=SECTION, teeth=None, origin=0.0):
-    """The exact prism a planar belt of rectangular section encloses."""
+def belt_volume(circles, section=SECTION, teeth=None, origin=0.0, face="inner"):
+    """The exact prism a planar belt of rectangular section encloses.
+
+    Exactly one of the two traces carries the teeth -- a belt has them on
+    one face -- and which one is `face`.
+    """
     points = np.asarray(section, dtype=np.float64)
     width = points[:, 1].max() - points[:, 1].min()
-    return width * (
-        abs(trace_area(circles, points[:, 0].max()))
-        - abs(trace_area(circles, points[:, 0].min(), teeth, origin))
+    outer = trace_area(
+        circles,
+        points[:, 0].max(),
+        teeth if face == "outer" else None,
+        origin,
+        toward=+1.0,
     )
+    inner = trace_area(
+        circles,
+        points[:, 0].min(),
+        None if face == "outer" else teeth,
+        origin,
+    )
+    return width * (abs(outer) - abs(inner))
 
 
 def loop_length(circles):

@@ -136,6 +136,19 @@ def _three_pulley_belt(values):
     )
 
 
+def _reverse_bend_belt(values):
+    # The middle circle carries a sense of -1: the belt is bent backwards
+    # over it, so its neighbours are reached along internal tangents and
+    # the teeth stand on the outer face.
+    circles = [(0.0, 0.0, 8.0), (30.0, values["press"], 3.0, -1), (60.0, 0.0, 8.0)]
+    return belt_volume(
+        circles,
+        teeth={"height": 0.75, "count": 6},
+        origin=values["travel"],
+        face="outer",
+    )
+
+
 #: The exact volume each fixture's document encloses, by hand. A fixture
 #: without an entry fails the suite rather than being skipped.
 CLOSED_FORMS = {
@@ -145,6 +158,7 @@ CLOSED_FORMS = {
     "loom-lead-in.json": _loom_lead_in,
     "oblique-line.json": _oblique_line,
     "quarter-bend.json": _quarter_bend,
+    "reverse-bend-belt.json": _reverse_bend_belt,
     "spring.json": _spring,
     "three-pulley-belt.json": _three_pulley_belt,
 }

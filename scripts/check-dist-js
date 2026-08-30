@@ -27,7 +27,9 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="0.1.0"
+# The package's own version, not a copy of it.
+version="$(node -p "require('$repo/js/package.json').version")"
+[ -n "$version" ] || { echo "check-dist-js: js/package.json declares no version" >&2; exit 1; }
 tarball_name="molejo-${version}.tgz"
 
 scratch="$(mktemp -d -t molejo-dist-js-XXXXXX)"

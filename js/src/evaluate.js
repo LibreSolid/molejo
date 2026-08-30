@@ -269,17 +269,51 @@ function profilePoints(profile, values, count) {
 }
 
 /**
- * Which profile vertices the teeth displace: those at the minimum x.
+ * Which way each profile vertex is displaced, as a signed mask.
  *
- * Exact equality, not a tolerance: a section whose inner face is flat --
- * every belt's is -- has two or more vertices there, and one whose inner
+ * A belt carries its teeth on one face, and which one is the loop's
+ * business rather than the section's: a belt driven from inside its
+ * circuit has them on the inner face, the vertices at the minimum local
+ * x, pushed further toward the circles; a belt driven from outside it has
+ * them on the outer face, the vertices at the maximum, pushed away. So
+ * this is -1 on the toothed vertices of an inner face and +1 on those of
+ * an outer one, and 0 on the rest.
+ *
+ * Exact equality, not a tolerance: a section whose toothed face is flat --
+ * every belt's is -- has two or more vertices there, and one whose toothed
  * face is rounded displaces a single vertex into a spike, which is
  * authorship rather than something molejo guesses at.
  */
-function innerFace(points) {
+function toothedFace(points, face) {
+  if (face === 'outer') {
+    let most = points[0][0];
+    for (const point of points) most = Math.max(most, point[0]);
+    return points.map((point) => (point[0] === most ? 1.0 : 0.0));
+  }
   let least = points[0][0];
   for (const point of points) least = Math.min(least, point[0]);
-  return points.map((point) => point[0] === least);
+  return points.map((point) => (point[0] === least ? -1.0 : 0.0));
+}
+
+/**
+ * Which face of the section a wrap's teeth stand on.
+ *
+ * A belt with no teeth still resolves an anchor or a phase, so the default
+ * is asked for even when there is nothing to displace.
+ */
+function toothFace(primitive) {
+  const teeth = primitive.teeth;
+  if (teeth === undefined || teeth.face === undefined) return 'inner';
+  return teeth.face;
+}
+
+/**
+ * The sign the belt runs a circle with: +1 for one inside the loop, which
+ * it bends around the ordinary way, -1 for one outside it, which it is
+ * bent backwards over.
+ */
+function wrapSense(circle) {
+  return circle.turn === 'counterclockwise' ? -1.0 : 1.0;
 }
 
 // --- paths --------------------------------------------------------------
@@ -655,16 +689,20 @@ function sampleSpline(primitive, values, segments, startFrame, loc) {
  * The belt's own geometry: ring centres, tangents, and arc lengths.
  *
  * A wrap is planar -- it lies in the world XY plane, because its circles
- * are declared there -- and it runs the external tangents, clockwise seen
- * from +Z, touching every circle along its outward normal. For consecutive
- * circles at distance L with radii r and r':
+ * are declared there -- and the loop as a whole runs clockwise seen from
+ * +Z. A circle it turns clockwise about is one it wraps from outside; a
+ * circle it turns counterclockwise about is one it is bent backwards over,
+ * and it reaches that one along the *internal* tangents of its neighbours.
+ * One formula covers both, with each radius signed by its sense. For
+ * consecutive circles at distance L with signed radii r and r':
  *
  *     n = delta*chat + sqrt(1 - delta^2)*rot90(chat),  delta = (r - r')/L
  *
- * and the direction of travel is `(n_y, -n_x)`. The elements of the loop
- * are span 0, the arc about circle 1, span 1, … and finally the arc about
- * circle 0, each spent `segments` rings; the loop's origin is where the
- * belt leaves circle 0.
+ * the belt touches each circle at `centre + r*n` with r signed, and the
+ * direction of travel is `(n_y, -n_x)`. The elements of the loop are span
+ * 0, the arc about circle 1, span 1, … and finally the arc about circle 0,
+ * each spent `segments` rings; the loop's origin is where the belt leaves
+ * circle 0.
  */
 function wrapGeometry(primitive, values, segments, loc) {
   const circles = primitive.around;
@@ -672,6 +710,7 @@ function wrapGeometry(primitive, values, segments, loc) {
 
   const centres = [];
   const radii = [];
+  const senses = [];
   for (let index = 0; index < count; index += 1) {
     centres.push(
       resolveVector(circles[index].center, values, `${loc}.around[${index}].center`),
@@ -688,6 +727,7 @@ function wrapGeometry(primitive, values, segments, loc) {
       );
     }
     radii.push(radius);
+    senses.push(wrapSense(circles[index]));
   }
 
   const normals = [];
@@ -698,10 +738,11 @@ function wrapGeometry(primitive, values, segments, loc) {
       centres[following][1] - centres[index][1],
     ];
     const length = Math.sqrt(span[0] * span[0] + span[1] * span[1]);
-    const gap = radii[index] - radii[following];
+    const gap = senses[index] * radii[index] - senses[following] * radii[following];
     if (length <= Math.abs(gap)) {
+      const kind = senses[index] === senses[following] ? 'external' : 'internal';
       throw new EvaluationError(
-        `${loc}.around[${following}]: a wrap needs an external tangent between ` +
+        `${loc}.around[${following}]: a wrap needs an ${kind} tangent between ` +
           `consecutive circles; around[${index}] and around[${following}] are too ` +
           `close for one`,
       );
@@ -724,14 +765,18 @@ function wrapGeometry(primitive, values, segments, loc) {
     const following = (index + 1) % count;
     const normal = normals[index];
 
-    // The tangent span, from circle `index` to circle `following`.
+    // The tangent span, from circle `index` to circle `following`. The
+    // reach along the normal is signed: the belt touches a circle it is
+    // bent backwards over on the far side of it.
+    const here = senses[index] * radii[index];
+    const there = senses[following] * radii[following];
     const start = [
-      centres[index][0] + radii[index] * normal[0],
-      centres[index][1] + radii[index] * normal[1],
+      centres[index][0] + here * normal[0],
+      centres[index][1] + here * normal[1],
     ];
     const end = [
-      centres[following][0] + radii[following] * normal[0],
-      centres[following][1] + radii[following] * normal[1],
+      centres[following][0] + there * normal[0],
+      centres[following][1] + there * normal[1],
     ];
     const reach = [end[0] - start[0], end[1] - start[1]];
     const length = Math.sqrt(reach[0] * reach[0] + reach[1] * reach[1]);
@@ -744,15 +789,22 @@ function wrapGeometry(primitive, values, segments, loc) {
     }
     travelled += length;
 
-    // The arc about circle `following`, clockwise from the normal the
-    // belt arrives on to the one it leaves on.
-    const arrival = Math.atan2(normal[1], normal[0]);
-    const departure = Math.atan2(normals[following][1], normals[following][0]);
-    const turn = (((arrival - departure) % TAU) + TAU) % TAU;
+    // The arc about circle `following`, from the ray the belt arrives on
+    // to the one it leaves on, turned the way that circle's sense says.
+    // The angles are of the points the belt touches, not of the normals:
+    // on a circle it hugs from the far side the two differ by half a
+    // turn, and it is the point that has to be right.
+    const onward = senses[following];
+    const arrival = Math.atan2(onward * normal[1], onward * normal[0]);
+    const departure = Math.atan2(
+      onward * normals[following][1],
+      onward * normals[following][0],
+    );
+    const turn = (((onward * (arrival - departure)) % TAU) + TAU) % TAU;
     const radius = radii[following];
     for (let ring = 0; ring < segments; ring += 1) {
       const step = ring / segments;
-      const angle = arrival - turn * step;
+      const angle = arrival - onward * turn * step;
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
       ringCentres.push([
@@ -760,7 +812,11 @@ function wrapGeometry(primitive, values, segments, loc) {
         centres[following][1] + radius * sine,
         0.0,
       ]);
-      tangents.push([sine, -cosine, 0.0]);
+      // The belt runs the other way round a circle it is bent backwards
+      // over, and the tangent turns with it -- which is what swings the
+      // profile's local x from pointing away from that circle to
+      // pointing at it, and so swings the teeth.
+      tangents.push([onward * sine, -onward * cosine, 0.0]);
       stations.push(travelled + step * (radius * turn));
     }
     travelled += radius * turn;
@@ -961,7 +1017,10 @@ export function evaluate(spec, values, buffers) {
   const displacement = loop
     ? wrapDisplacement(document.path[0], values, segments, 'path[0]')
     : null;
-  const inner = displacement === null ? null : innerFace(points);
+  const toothed =
+    displacement === null
+      ? null
+      : toothedFace(points, toothFace(document.path[0]));
 
   const rings = centres.length;
   const vertexCount = loop ? rings * count : rings * count + 2;
@@ -990,10 +1049,11 @@ export function evaluate(spec, values, buffers) {
     const [x, y] = axes[ring];
     for (let j = 0; j < count; j += 1) {
       const [across, v] = points[j];
-      // A tooth pushes the profile's inner face toward the negative
-      // local x and leaves every other vertex where it is.
+      // A tooth pushes the profile's toothed face along local x, the way
+      // `toothed` gives each vertex, and leaves every other vertex where
+      // it is.
       const u =
-        displacement !== null && inner[j] ? across - displacement[ring] : across;
+        displacement !== null ? across + displacement[ring] * toothed[j] : across;
       positions[at] = centre[0] + u * x[0] + v * y[0];
       positions[at + 1] = centre[1] + u * x[1] + v * y[1];
       positions[at + 2] = centre[2] + u * x[2] + v * y[2];

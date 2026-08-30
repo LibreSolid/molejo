@@ -51,14 +51,22 @@ from .authoring import (
     Wrap,
 )
 from .evaluator import EvaluationError, Mesh, evaluate
-from .spec import SPEC_VERSION, SpecError, parameter_names, validate
+from .spec import (
+    SPEC_VERSION,
+    SPEC_VERSIONS,
+    SpecError,
+    parameter_names,
+    required_version,
+    validate,
+)
 
 __author__ = "Luis Henrique Cassis Fagundes"
 __email__ = "lhfagundes@gmail.com"
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "SPEC_VERSION",
+    "SPEC_VERSIONS",
     "Arc",
     "Circle",
     "EvaluationError",
@@ -75,5 +83,6 @@ __all__ = [
     "Wrap",
     "evaluate",
     "parameter_names",
+    "required_version",
     "validate",
 ]

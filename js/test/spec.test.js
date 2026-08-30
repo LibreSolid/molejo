@@ -9,7 +9,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseSpec, parameterNames, evaluate, SpecError, SPEC_VERSION } from '../src/index.js';
+import {
+  parseSpec,
+  parameterNames,
+  evaluate,
+  requiredVersion,
+  SpecError,
+  SPEC_VERSION,
+  SPEC_VERSIONS,
+} from '../src/index.js';
 
 const SPRING_DOCUMENT = {
   molejo: 1,
@@ -23,8 +31,41 @@ function spring() {
   return JSON.parse(JSON.stringify(SPRING_DOCUMENT));
 }
 
-test('the spec version is one', () => {
-  assert.equal(SPEC_VERSION, 1);
+test('the spec versions read are one and two', () => {
+  // Two, because v2 only adds vocabulary: every v1 document still says
+  // what it always said. SPEC_VERSION is the newest of them.
+  assert.deepEqual(SPEC_VERSIONS, [1, 2]);
+  assert.equal(SPEC_VERSION, 2);
+});
+
+test('a document declares the lowest version it needs', () => {
+  assert.equal(requiredVersion(spring()), 1);
+});
+
+test('a v1 document may not use v2 vocabulary', () => {
+  const document = {
+    molejo: 1,
+    profile: {
+      type: 'polygon',
+      points: [[-0.4, -1.0], [0.9, -1.0], [0.9, 1.0], [-0.4, 1.0]],
+    },
+    path: [{
+      type: 'wrap',
+      around: [
+        { center: [0.0, 0.0], radius: 8.0 },
+        { center: [30.0, 4.0], radius: 3.0, turn: 'counterclockwise' },
+        { center: [60.0, 0.0], radius: 8.0 },
+      ],
+    }],
+    loop: true,
+    tessellation: { path: 12, profile: 4 },
+  };
+  assert.equal(requiredVersion(document), 2);
+  assert.throws(() => parseSpec(document), (error) =>
+    error instanceof SpecError && error.message.includes('path[0].around[1].turn'));
+
+  document.molejo = 2;
+  assert.deepEqual(parseSpec(document), document);
 });
 
 test('the canonical spring document parses', () => {

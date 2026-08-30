@@ -28,7 +28,13 @@ in ordinary Python and bound at evaluation.
 
 import json
 
-from .spec import SPEC_VERSION, SpecError, parameter_names, validate
+from .spec import (
+    SPEC_VERSION,
+    SpecError,
+    parameter_names,
+    required_version,
+    validate,
+)
 
 __all__ = [
     "Arc",
@@ -283,23 +289,33 @@ class Teeth(_Element):
 
     The count is declared, not derived, so tooth count -- and with it
     vertex count and ordering -- never varies with a parameter.
+
+    ``face`` says which side of the section the teeth stand on: ``inner``
+    for a belt driven from inside its own circuit, ``outer`` for one
+    driven from outside it. It is emitted only when it is not the
+    default, so a belt that never asked the question authors the document
+    it always did.
     """
 
-    __slots__ = ("pitch", "height", "flank", "count")
+    __slots__ = ("pitch", "height", "flank", "count", "face")
 
-    def __init__(self, pitch, height, count, flank="trapezoid"):
+    def __init__(self, pitch, height, count, flank="trapezoid", face="inner"):
         self.pitch = pitch
         self.height = height
         self.flank = flank
         self.count = count
+        self.face = face
 
     def to_dict(self):
-        return {
+        document = {
             "pitch": _emit(self.pitch),
             "height": _emit(self.height),
             "flank": self.flank,
             "count": self.count,
         }
+        if self.face != "inner":
+            document["face"] = self.face
+        return document
 
 
 class Wrap(_Element):
@@ -398,7 +414,15 @@ class Shape(_Element):
     # -- serialization ------------------------------------------------------
 
     def to_dict(self):
-        """The canonical document. Always a valid spec: it is validated here."""
+        """The canonical document. Always a valid spec: it is validated here.
+
+        The version written is the *lowest* the document needs, not the
+        newest this implementation reads. A shape that asks nothing of a
+        later vocabulary authors the document it always did, byte for
+        byte, so a consumer pinned to an older molejo keeps reading
+        everything it could read before and refuses only what it really
+        cannot evaluate.
+        """
         document = {
             "molejo": SPEC_VERSION,
             "profile": _emit(self.profile),
@@ -409,6 +433,7 @@ class Shape(_Element):
                 "profile": self.profile_samples,
             },
         }
+        document["molejo"] = required_version(document)
         validate(document)
         return document
 

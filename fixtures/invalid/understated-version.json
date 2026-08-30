@@ -1,0 +1,25 @@
+{
+  "name": "a document that understates its own spec version",
+  "spec": {
+    "molejo": 1,
+    "profile": {
+      "type": "polygon",
+      "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]
+    },
+    "path": [{
+      "type": "wrap",
+      "around": [
+        {"center": [0.0, 0.0], "radius": 8.0},
+        {"center": [30.0, 4.0], "radius": 3.0, "turn": "counterclockwise"},
+        {"center": [60.0, 0.0], "radius": 8.0}
+      ]
+    }],
+    "loop": true,
+    "tessellation": {"path": 12, "profile": 4}
+  },
+  "must_mention": [
+    "molejo",
+    "spec version 2 vocabulary",
+    "path[0].around[1].turn"
+  ]
+}

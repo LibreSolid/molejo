@@ -16,7 +16,14 @@
 
 import { readFileSync } from 'node:fs';
 
-import { SPEC_VERSION, VERSION, evaluate, parameterNames, parseSpec } from 'molejo';
+import {
+  SPEC_VERSION,
+  SPEC_VERSIONS,
+  VERSION,
+  evaluate,
+  parameterNames,
+  parseSpec,
+} from 'molejo';
 
 function check(condition, message) {
   if (!condition) {
@@ -36,7 +43,10 @@ check(
   resolved.includes('/node_modules/molejo/'),
   `resolved molejo to ${resolved}, which is not an installed package`,
 );
-report(`molejo ${VERSION} (spec v${SPEC_VERSION}) resolved from ${resolved}`);
+report(
+  `molejo ${VERSION} (reads spec v${SPEC_VERSIONS.join(', v')}, writes at most ` +
+    `v${SPEC_VERSION}) resolved from ${resolved}`,
+);
 
 // --- the cylinder parity fixture, from the repository ----------------------
 
@@ -46,7 +56,12 @@ const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 const tolerance = fixture.tolerance.js;
 
 const document = parseSpec(fixture.spec);
-check(document.molejo === SPEC_VERSION, 'the fixture is not a spec v1 document');
+// A version this implementation reads, not the newest it reads: the
+// cylinder is a spec v1 document and must stay one.
+check(
+  SPEC_VERSIONS.includes(document.molejo),
+  `the fixture declares spec version ${document.molejo}, which this build does not read`,
+);
 const names = [...parameterNames(fixture.spec)].sort();
 check(
   names.length === 1 && names[0] === 'length',

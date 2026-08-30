@@ -15,8 +15,21 @@
 // structural and needs no parameter values; a reference to a parameter the
 // caller has not bound is an evaluation error, not a structural one.
 
-/** The spec version this implementation reads. */
-export const SPEC_VERSION = 1;
+/** The spec versions this implementation reads, oldest first.
+ *
+ * Two of them, because v2 only *adds* vocabulary: a v1 document says
+ * exactly what it always said and evaluates to the same vertices, so
+ * refusing it would be a break with nothing behind it. What the version
+ * integer buys is the other direction -- a document using v2 vocabulary
+ * cannot be read by a v1 implementation, and must say so rather than
+ * arriving as an unknown field. */
+export const SPEC_VERSIONS = [1, 2];
+
+/** The newest spec version this implementation reads, and the highest it
+ * ever writes. An author writes the *lowest* version its document needs
+ * (see `requiredVersion`), so a shape that asks nothing of v2 authors the
+ * v1 document it always did. */
+export const SPEC_VERSION = SPEC_VERSIONS[SPEC_VERSIONS.length - 1];
 
 /** The closed v1 profile vocabulary. */
 export const PROFILE_TYPES = ['circle', 'polygon'];
@@ -26,6 +39,20 @@ export const PRIMITIVE_TYPES = ['arc', 'helix', 'line', 'spline', 'wrap'];
 
 /** The closed v1 tooth-flank vocabulary. */
 export const TOOTH_FLANKS = ['trapezoid'];
+
+/** Which face of the section the teeth stand on. A belt has teeth on one
+ * face and the loop decides which one that is: a belt driven from inside
+ * its own circuit carries them on the inner face, and one driven from
+ * outside -- pressed onto a pulley by two guide bearings, which is what a
+ * reverse bend is for -- carries them on the outer. */
+export const TOOTH_FACES = ['inner', 'outer'];
+
+/** Which way the belt turns as it goes around one circle. The loop as a
+ * whole runs clockwise seen from +Z, and a circle it turns
+ * counterclockwise about is one it is bent backwards over: the belt
+ * leaves its neighbours on their inner tangents, hugs that circle from
+ * the far side, and the loop is concave there. */
+export const WRAP_TURNS = ['clockwise', 'counterclockwise'];
 
 const SLOT_FORM = '{"param": "<name>"}';
 
@@ -162,6 +189,46 @@ function checkCount(value, loc, minimum = 1) {
 // --- the document ------------------------------------------------------
 
 /**
+ * The lowest spec version that can express `document`, and where.
+ *
+ * Structure alone, read off the document rather than tracked while it is
+ * validated: a wrap turning counterclockwise about a circle, or standing
+ * its teeth on the outer face, is v2 vocabulary and nothing else is yet.
+ * The location comes back with it so a document that understates its
+ * version can be told which field forced it.
+ */
+function neededVersion(document) {
+  const path = document.path;
+  for (let index = 0; index < path.length; index += 1) {
+    const primitive = path[index];
+    if (!isObject(primitive) || primitive.type !== 'wrap') continue;
+    const loc = `path[${index}]`;
+    const around = primitive.around;
+    for (let at = 0; at < around.length; at += 1) {
+      if (isObject(around[at]) && has(around[at], 'turn')) {
+        return [2, `${loc}.around[${at}].turn`];
+      }
+    }
+    if (isObject(primitive.teeth) && has(primitive.teeth, 'face')) {
+      return [2, `${loc}.teeth.face`];
+    }
+  }
+  return [1, null];
+}
+
+/**
+ * The lowest spec version that can express `document`.
+ *
+ * The twin of Python's `molejo.required_version`. This runtime authors
+ * nothing, so it is exported for a consumer that emits documents of its
+ * own and wants them to declare no more than they need.
+ */
+export function requiredVersion(document) {
+  return neededVersion(document)[0];
+}
+
+
+/**
  * Validate a molejo document, throwing `SpecError` on the first offending
  * element. Returns undefined when the document is a valid spec.
  */
@@ -171,17 +238,31 @@ export function validate(document) {
 
   const version = document.molejo;
   if (!isInteger(version)) {
-    throw new SpecError(`spec.molejo: must be the integer 1, got ${render(version)}`);
+    throw new SpecError(
+      `spec.molejo: must be one of the integers ${SPEC_VERSIONS.join(', ')}, got ` +
+        `${render(version)}`,
+    );
   }
-  if (version !== SPEC_VERSION) {
+  if (!SPEC_VERSIONS.includes(version)) {
     throw new SpecError(
       `spec.molejo: unsupported spec version ${render(version)}; this ` +
-        `implementation reads spec version ${SPEC_VERSION}`,
+        `implementation reads spec version ${SPEC_VERSIONS.join(' and ')}`,
     );
   }
 
   checkProfile(document.profile, 'profile');
   checkPath(document.path, 'path');
+
+  // What the version integer is for: a document may not use vocabulary
+  // its own declared version cannot express, or the number would be a
+  // label rather than a promise about who can read it.
+  const [needed, because] = neededVersion(document);
+  if (version < needed) {
+    throw new SpecError(
+      `spec.molejo: this document declares spec version ${render(version)} but ` +
+        `uses spec version ${needed} vocabulary at ${because}`,
+    );
+  }
 
   if (has(document, 'loop') && typeof document.loop !== 'boolean') {
     throw new SpecError(`loop: must be a boolean, got ${kindOf(document.loop)}`);
@@ -304,21 +385,36 @@ function checkWrapCircles(around, loc) {
   around.forEach((circle, index) => {
     const circleLoc = `${loc}[${index}]`;
     checkObject(circle, circleLoc);
-    checkFields(circle, circleLoc, ['center', 'radius']);
+    checkFields(circle, circleLoc, ['center', 'radius'], ['turn']);
     checkVector(circle.center, `${circleLoc}.center`, 2);
     checkSlot(circle.radius, `${circleLoc}.radius`);
+    // Which way the belt runs this circle is topology, like the tooth
+    // count: it decides which tangents the loop takes and so which
+    // elements it has, so it is a literal and never a parameter.
+    if (has(circle, 'turn') && !WRAP_TURNS.includes(circle.turn)) {
+      throw new SpecError(
+        `${circleLoc}.turn: unknown turn ${quote(circle.turn)}; expected one of ` +
+          `${WRAP_TURNS.join(', ')}`,
+      );
+    }
   });
 }
 
 function checkTeeth(teeth, loc) {
   checkObject(teeth, loc);
-  checkFields(teeth, loc, ['pitch', 'height', 'flank', 'count']);
+  checkFields(teeth, loc, ['pitch', 'height', 'flank', 'count'], ['face']);
   checkSlot(teeth.pitch, `${loc}.pitch`);
   checkSlot(teeth.height, `${loc}.height`);
   if (!TOOTH_FLANKS.includes(teeth.flank)) {
     throw new SpecError(
       `${loc}.flank: unknown tooth flank ${quote(teeth.flank)}; expected one of ` +
         `${TOOTH_FLANKS.join(', ')}`,
+    );
+  }
+  if (has(teeth, 'face') && !TOOTH_FACES.includes(teeth.face)) {
+    throw new SpecError(
+      `${loc}.face: unknown tooth face ${quote(teeth.face)}; expected one of ` +
+        `${TOOTH_FACES.join(', ')}`,
     );
   }
   // The tooth count fixes topology, so it can never follow a parameter.

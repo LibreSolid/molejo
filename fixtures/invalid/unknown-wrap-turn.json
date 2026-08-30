@@ -1,0 +1,26 @@
+{
+  "name": "a wrap circle turned a way molejo does not know",
+  "spec": {
+    "molejo": 2,
+    "profile": {
+      "type": "polygon",
+      "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]
+    },
+    "path": [{
+      "type": "wrap",
+      "around": [
+        {"center": [0.0, 0.0], "radius": 8.0},
+        {"center": [60.0, 0.0], "radius": 5.0, "turn": "widdershins"}
+      ]
+    }],
+    "loop": true,
+    "tessellation": {"path": 12, "profile": 4}
+  },
+  "must_mention": [
+    "path[0].around[1].turn",
+    "unknown turn",
+    "widdershins",
+    "clockwise",
+    "counterclockwise"
+  ]
+}

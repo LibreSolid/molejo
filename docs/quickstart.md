@@ -125,8 +125,8 @@ pipeline tests is what your viewer shows. Details in {doc}`javascript`.
 
 ## A toothed belt
 
-A belt is a `wrap`: a path around ordered circles, following their
-external tangents. This one circulates around three pulleys — one of
+A belt is a `wrap`: a path around ordered circles, running the tangents
+between them. This one circulates around three pulleys — one of
 them an idler whose position is itself a parameter — with a trapezoidal
 tooth pattern driven by `travel`:
 

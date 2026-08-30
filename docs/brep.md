@@ -42,7 +42,8 @@ result = spring.brep(height=30.0)
 
 The refusals are the mesh evaluator's, word for word: a dangling
 parameter, a non-numeric value, a line that goes nowhere, a wrap with
-no external tangent all raise {class}`~molejo.EvaluationError` with the
+no tangent between two of its circles all raise
+{class}`~molejo.EvaluationError` with the
 identical message, because both evaluators resolve and refuse through
 the same code.
 

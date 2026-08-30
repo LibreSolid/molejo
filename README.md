@@ -91,10 +91,13 @@ needed.
 
 ## Status
 
-Version 0.1.0, implementing spec version 1: profiles (circle, polygon)
+Version 0.2.0, implementing spec version 2: profiles (circle, polygon)
 and path primitives (line, arc, helix, spline, wrap). Both packages
 parse and validate the document against shared fixtures; the Python
-package also authors it (`Shape`, `Circle`, …, `P`).
+package also authors it (`Shape`, `Circle`, …, `P`). Spec version 1
+documents are read unchanged — version 2 only adds vocabulary — and an
+author writes the lowest version a document needs, so a shape that asks
+nothing of version 2 emits the version 1 document it always did.
 
 Circle and polygon profiles swept along the whole v1 path vocabulary —
 `line`, `arc`, `helix`, `spline` and `wrap` — evaluate in both runtimes,
@@ -103,9 +106,10 @@ way, from Python as numpy arrays and binary STL, from JavaScript as
 reusable three.js buffers, pinned to each other by shared parity
 fixtures. The spring in the sample above is one of those fixtures rather
 than a promise, and so are a toothed belt around three pulleys whose
-teeth circulate with a parameter and a filament loom whose head follows
-three. The one gap in the v1 vocabulary raises naming itself: closing a
-loop that is not a wrap.
+teeth circulate with a parameter, a belt bent backwards over a drive
+pulley with its teeth facing outward to meet it, and a filament loom
+whose head follows three. The one gap in the vocabulary raises naming
+itself: closing a loop that is not a wrap.
 
 The B-rep evaluator installs with `pip install molejo[brep]` and
 evaluates the same documents to closed OCCT solids —
@@ -123,7 +127,8 @@ springs, a Metamaquina 2's drive belts) rather than only in this
 repository's fixtures.
 
 A package version carries the spec version it implements. Both packages
-carry spec v1 at `0.1.0` and release together for a given spec version.
+carried spec v1 at `0.1.0` and carry spec v2 at `0.2.0`, and release
+together for a given spec version.
 One document, two implementations: neither runtime is ever published
 against a spec version the other has not caught up to.
 

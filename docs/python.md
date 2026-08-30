@@ -37,8 +37,8 @@ tessellation counts (`path_samples`, `profile_samples`), and `loop`
 | `Arc(center, axis, angle)` | `{"type": "arc", ...}` |
 | `Helix(radius, turns, height)` | `{"type": "helix", ...}` |
 | `Spline(points, start_tangent=None, end_tangent=None)` | `{"type": "spline", ...}` |
-| `Wrap(around, teeth=None, anchor=None, phase=None)` | `{"type": "wrap", ...}` — `around` a list of `{"center": (x, y), "radius": r}` |
-| `Teeth(pitch, height, count, flank="trapezoid")` | a wrap's `teeth` object |
+| `Wrap(around, teeth=None, anchor=None, phase=None)` | `{"type": "wrap", ...}` — `around` a list of `{"center": (x, y), "radius": r}`, each optionally `"turn": "counterclockwise"` for a circle the belt is bent backwards over |
+| `Teeth(pitch, height, count, flank="trapezoid", face="inner")` | a wrap's `teeth` object; `face="outer"` stands the teeth on the belt's outer face |
 
 Any numeric slot accepts a number or a parameter reference.
 
@@ -140,7 +140,8 @@ Three kinds, for three questions:
 - {class}`~molejo.EvaluationError` (a `ValueError`) — the document is
   valid but cannot be evaluated at these values: an unbound or
   non-finite parameter, a line to nowhere, an arc with no radius, a
-  wrap with no external tangent. The message names the parameter or
+  wrap with no tangent between two of its circles. The message names
+  the parameter or
   slot.
 - `NotImplementedError` — valid v1 vocabulary this build does not
   evaluate: `loop: true` on a path that is not a `wrap`. The message

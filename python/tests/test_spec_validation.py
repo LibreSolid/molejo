@@ -5,19 +5,79 @@
 """Structural validation of the canonical document.
 
 Validation is structural only: it needs no parameter values, and says
-nothing about geometry. It answers one question -- is this a v1 molejo
-document -- and when the answer is no it names the offending element.
+nothing about geometry. It answers one question -- is this a molejo
+document this implementation reads -- and when the answer is no it names
+the offending element. That includes the document's own version: a
+document may not use vocabulary the version it declares cannot express.
 """
 
 import pytest
 
-from molejo.spec import SPEC_VERSION, SpecError, parameter_names, validate
+from molejo.spec import (
+    SPEC_VERSION,
+    SPEC_VERSIONS,
+    SpecError,
+    parameter_names,
+    required_version,
+    validate,
+)
 
 from conftest import SPRING_DOCUMENT
 
 
-def test_spec_version_is_one():
-    assert SPEC_VERSION == 1
+def test_the_spec_versions_read_are_one_and_two():
+    # Two, because v2 only adds vocabulary: every v1 document still says
+    # what it always said. `SPEC_VERSION` is the newest of them, and the
+    # most an author ever writes.
+    assert SPEC_VERSIONS == (1, 2)
+    assert SPEC_VERSION == 2
+
+
+def test_a_document_declares_the_lowest_version_it_needs():
+    plain = {
+        "molejo": 1,
+        "profile": {"type": "circle", "radius": 2.0},
+        "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+        "tessellation": {"path": 8, "profile": 8},
+    }
+    assert required_version(plain) == 1
+    assert validate(plain) is None
+
+
+def test_a_v1_document_may_not_use_v2_vocabulary():
+    document = {
+        "molejo": 1,
+        "profile": {
+            "type": "polygon",
+            "points": [[-0.4, -1.0], [0.9, -1.0], [0.9, 1.0], [-0.4, 1.0]],
+        },
+        "path": [
+            {
+                "type": "wrap",
+                "around": [
+                    {"center": [0.0, 0.0], "radius": 8.0},
+                    {"center": [60.0, 0.0], "radius": 5.0},
+                ],
+                "teeth": {
+                    "pitch": 2.0,
+                    "height": 0.75,
+                    "flank": "trapezoid",
+                    "count": 6,
+                    "face": "outer",
+                },
+            }
+        ],
+        "loop": True,
+        "tessellation": {"path": 8, "profile": 4},
+    }
+    assert required_version(document) == 2
+
+    with pytest.raises(SpecError) as raised:
+        validate(document)
+    assert "path[0].teeth.face" in str(raised.value)
+
+    document["molejo"] = 2
+    assert validate(document) is None
 
 
 def test_the_canonical_spring_document_validates(spring_document):

@@ -102,8 +102,9 @@ copied from an unvalidated implementation would pin a bug in two
 languages instead of catching one. The belt fixtures are gated the same
 way and rather harder: the whole vertex array predicted from the
 circles alone, the closed-form loop length, tangency at every contact,
-the tooth crest and root radii, one full clockwise turn, and the exact
-prism the belt's inner and outer faces enclose — which a planar wrap of
+the tooth crest and root radii, one net turn of the tangent — which a
+reverse bend pays back in counterclockwise arc exactly what it costs in
+clockwise — and the exact prism the belt's inner and outer faces enclose — which a planar wrap of
 rectangular section admits in closed form, teeth included. The loom
 fixtures are gated on the Hermite chain reproduced independently: both
 declared ends reached bit for bit through the cap centres, every ring
@@ -118,7 +119,8 @@ agrees with the directory:
 ```json
 { "parity": ["carriage-belt.json", "cylinder.json", "filament-loom.json",
              "loom-lead-in.json", "oblique-line.json", "quarter-bend.json",
-             "spring.json", "three-pulley-belt.json"] }
+             "reverse-bend-belt.json", "spring.json",
+             "three-pulley-belt.json"] }
 ```
 
 Neither suite keeps a list of its own, so a fixture added for one runtime

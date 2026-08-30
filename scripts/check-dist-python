@@ -22,7 +22,10 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="0.1.0"
+# The package's own version, not a copy of it: a release that bumped one
+# and forgot the other would otherwise fail here for the wrong reason.
+version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$repo/python/pyproject.toml" | head -1)"
+[ -n "$version" ] || { echo "check-dist-python: python/pyproject.toml declares no version" >&2; exit 1; }
 wheel_name="molejo-${version}-py3-none-any.whl"
 sdist_name="molejo-${version}.tar.gz"
 

@@ -49,6 +49,12 @@ CARRIAGE = [(0.0, 0.0, 5.1), (0.0, 210.0, 5.1)]
 #: Three circles listed in the clockwise circulation their hull has.
 PULLEYS = [(0.0, 0.0, 8.0), (30.0, 40.0, 3.0), (60.0, 0.0, 5.0)]
 
+#: The same two pulleys with a third bent backwards over between them: a
+#: belt pressed onto a small drive pulley by the two it already runs on,
+#: which is what a reverse bend is for. A fourth element is the circle's
+#: sense -- ``-1`` for one the belt turns counterclockwise about.
+REVERSED = [(0.0, 0.0, 8.0), (30.0, 4.0, 3.0, -1), (60.0, 0.0, 8.0)]
+
 
 # --- the shapes under test -------------------------------------------------
 
@@ -65,10 +71,7 @@ def belt(
     """A wrap around ``circles``, its section swept as a closed loop."""
     wrap = {
         "type": "wrap",
-        "around": [
-            {"center": [circle[0], circle[1]], "radius": circle[2]}
-            for circle in circles
-        ],
+        "around": [_circle(circle) for circle in circles],
     }
     if teeth is not None:
         wrap["teeth"] = teeth
@@ -76,17 +79,38 @@ def belt(
         wrap["anchor"] = anchor
     if phase is not None:
         wrap["phase"] = phase
-    return {
+    document = {
         "molejo": 1,
         "profile": {"type": "polygon", "points": [list(point) for point in section]},
         "path": [wrap],
         "loop": loop,
         "tessellation": {"path": path, "profile": len(section)},
     }
+    # A fixture declares the version its own vocabulary needs, exactly as
+    # an authored shape does -- so the reverse-bend and outer-face cases
+    # say 2 and every other case in this module still says 1.
+    document["molejo"] = molejo.required_version(document)
+    return document
 
 
-def toothed(count=8, height=0.75, pitch=2.5):
-    return {"pitch": pitch, "height": height, "flank": "trapezoid", "count": count}
+def sense_of(circle):
+    """Which way the belt turns about ``circle``: a fixture's 4th element."""
+    return circle[3] if len(circle) > 3 else 1
+
+
+def _circle(circle):
+    """One fixture circle as the document declares it."""
+    declared = {"center": [circle[0], circle[1]], "radius": circle[2]}
+    if sense_of(circle) < 0:
+        declared["turn"] = "counterclockwise"
+    return declared
+
+
+def toothed(count=8, height=0.75, pitch=2.5, face=None):
+    teeth = {"pitch": pitch, "height": height, "flank": "trapezoid", "count": count}
+    if face is not None:
+        teeth["face"] = face
+    return teeth
 
 
 def bar(section, to=(0.0, 0.0, 10.0), path=3):
@@ -113,11 +137,16 @@ def rot90(vector):
 
 
 def outward_normal(first, second):
-    """The normal both circles are touched along by their common tangent."""
+    """The normal both circles are touched along by their common tangent.
+
+    Each radius signed by its sense, so this is the external tangent
+    where the two circles turn the same way and the internal one where
+    they do not.
+    """
     span = np.array(second[:2]) - np.array(first[:2])
     length = float(np.linalg.norm(span))
     direction = span / length
-    delta = (first[2] - second[2]) / length
+    delta = (sense_of(first) * first[2] - sense_of(second) * second[2]) / length
     return delta * direction + math.sqrt(1.0 - delta * delta) * rot90(direction)
 
 
@@ -132,8 +161,9 @@ def elements(circles):
         j = (i + 1) % count
         here, there = np.array(circles[i][:2]), np.array(circles[j][:2])
         normal = normals[i]
-        start = here + circles[i][2] * normal
-        end = there + circles[j][2] * normal
+        sense, onward = sense_of(circles[i]), sense_of(circles[j])
+        start = here + sense * circles[i][2] * normal
+        end = there + onward * circles[j][2] * normal
         items.append(
             {
                 "kind": "span",
@@ -143,14 +173,17 @@ def elements(circles):
                 "length": float(np.linalg.norm(end - start)),
             }
         )
-        arrival = math.atan2(normal[1], normal[0])
-        departure = math.atan2(normals[j][1], normals[j][0])
-        turn = (arrival - departure) % TAU
+        # The angle of the point the belt arrives at, which is the
+        # normal's own only on a circle the belt wraps from outside.
+        arrival = math.atan2(onward * normal[1], onward * normal[0])
+        departure = math.atan2(onward * normals[j][1], onward * normals[j][0])
+        turn = (onward * (arrival - departure)) % TAU
         items.append(
             {
                 "kind": "arc",
                 "centre": there,
                 "radius": circles[j][2],
+                "sense": onward,
                 "from": arrival,
                 "turn": turn,
                 "length": circles[j][2] * turn,
@@ -174,9 +207,13 @@ def wrap_rings(circles, segments):
                 point = item["start"] + fraction * (item["end"] - item["start"])
                 normal = item["normal"]
             else:
-                angle = item["from"] - fraction * item["turn"]
-                normal = np.array([math.cos(angle), math.sin(angle)])
-                point = item["centre"] + item["radius"] * normal
+                angle = item["from"] - item["sense"] * fraction * item["turn"]
+                radial = np.array([math.cos(angle), math.sin(angle)])
+                # The profile's local x is the radial outward from a
+                # circle the belt wraps and inward toward one it is bent
+                # backwards over: the tangent swings and takes it along.
+                normal = item["sense"] * radial
+                point = item["centre"] + item["radius"] * radial
             centres.append([point[0], point[1], 0.0])
             normals.append(normal)
             stations.append(travelled + fraction * item["length"])
@@ -192,7 +229,7 @@ def modulation(station, origin, period):
 
 
 def displacements(circles, segments, teeth, origin=0.0):
-    """How far each ring's inner face is pushed toward the circles."""
+    """How far each ring's toothed face is pushed along local x."""
     _, _, stations = wrap_rings(circles, segments)
     period = loop_length(circles) / teeth["count"]
     return np.array(
@@ -200,11 +237,14 @@ def displacements(circles, segments, teeth, origin=0.0):
     )
 
 
-def belt_vertices(circles, section, segments, teeth=None, origin=0.0):
+def belt_vertices(circles, section, segments, teeth=None, origin=0.0, face="inner"):
     """The whole wall vertex array, predicted from the circles alone."""
     centres, normals, _ = wrap_rings(circles, segments)
     points = np.asarray(section, dtype=np.float64)
-    inner = points[:, 0] == points[:, 0].min()
+    if face == "outer":
+        marked, toward = points[:, 0] == points[:, 0].max(), +1.0
+    else:
+        marked, toward = points[:, 0] == points[:, 0].min(), -1.0
     offsets = (
         displacements(circles, segments, teeth, origin)
         if teeth is not None
@@ -214,7 +254,7 @@ def belt_vertices(circles, section, segments, teeth=None, origin=0.0):
     for ring in range(len(centres)):
         axis = np.array([normals[ring][0], normals[ring][1], 0.0])
         for j, (across, along) in enumerate(points):
-            reach = across - (offsets[ring] if inner[j] else 0.0)
+            reach = across + (toward * offsets[ring] if marked[j] else 0.0)
             vertices[ring, j] = centres[ring] + reach * axis + along * np.array(
                 [0.0, 0.0, 1.0]
             )
@@ -672,7 +712,222 @@ def test_the_tooth_pattern_closes_at_the_seam():
     assert (steps <= slope * step + 1e-12).all()
 
 
+# --- the reverse bend -------------------------------------------------------
+#
+# A belt driven from outside its own circuit: two circles it already runs
+# on hold it against a third, which it is bent backwards over. The loop is
+# concave there, and the tangents on either side of it cross between the
+# centres instead of running alongside them.
+
+
+def test_a_reversed_circle_is_ridden_from_the_far_side():
+    # Every ring of the reversed arc is still at the declared radius --
+    # it is a circle the belt runs, like any other -- but the belt
+    # arrives at it on the far side: the tangent point is a radius
+    # *against* the span's normal rather than along it, which is the
+    # whole of what the sense does to a circle.
+    segments = 12
+    mesh = molejo.evaluate(belt(circles=REVERSED, path=segments))
+    centres = belt_centres(mesh)
+    middle = np.array(REVERSED[1][:2])
+
+    # Elements are span, arc-about-1, span, arc-about-2, ...: the arc
+    # about the reversed circle is element 1.
+    arc = centres[segments : 2 * segments, :2]
+    assert np.linalg.norm(arc - middle, axis=1) == pytest.approx(
+        REVERSED[1][2], rel=1e-12
+    )
+
+    normal = elements(REVERSED)[0]["normal"]
+    assert arc[0] == pytest.approx(middle - REVERSED[1][2] * normal, abs=1e-12)
+
+
+def test_a_reverse_bend_turns_the_belt_the_other_way():
+    # The one thing that makes it a reverse bend: on that arc the belt
+    # turns counterclockwise while the loop as a whole turns clockwise.
+    segments = 16
+    mesh = molejo.evaluate(belt(circles=REVERSED, path=segments))
+    centres = belt_centres(mesh)[:, :2]
+    middle = np.array(REVERSED[1][:2])
+    angles = np.unwrap(
+        np.arctan2(
+            centres[segments : 2 * segments, 1] - middle[1],
+            centres[segments : 2 * segments, 0] - middle[0],
+        )
+    )
+    assert (np.diff(angles) > 0).all(), "the reversed arc still runs clockwise"
+
+
+def test_the_loop_turns_through_one_net_turn_over_a_reverse_bend():
+    # The tangent of any simple closed curve makes exactly one revolution,
+    # and a reverse bend does not change that: it pays back in
+    # counterclockwise arc exactly what the extra clockwise arc on either
+    # side of it costs.
+    net = sum(
+        item["sense"] * item["turn"]
+        for item in elements(REVERSED)
+        if item["kind"] == "arc"
+    )
+    assert net == pytest.approx(TAU, rel=1e-12)
+
+
+def test_a_reverse_bend_crosses_between_the_two_centres():
+    # An internal tangent, which is what tells it from an external one:
+    # the span between a circle the belt wraps and one it is bent over
+    # passes between their centres, so its two endpoints lie on opposite
+    # sides of the line joining them.
+    items = elements(REVERSED)
+    span = items[0]
+    here, there = np.array(REVERSED[0][:2]), np.array(REVERSED[1][:2])
+    axis = rot90(there - here)
+    assert np.dot(span["start"] - here, axis) * np.dot(
+        span["end"] - here, axis
+    ) < 0.0
+
+
+def test_every_ring_of_a_reverse_bend_sits_where_the_closed_form_says():
+    segments = 9
+    mesh = molejo.evaluate(belt(circles=REVERSED, path=segments))
+    centres, _, _ = wrap_rings(REVERSED, segments)
+    assert belt_centres(mesh) == pytest.approx(centres, abs=1e-12)
+
+
+def test_every_wall_vertex_of_a_reverse_bend_is_the_closed_form_vertex():
+    segments, teeth = 9, toothed(count=17, height=0.5)
+    mesh = molejo.evaluate(belt(circles=REVERSED, path=segments, teeth=teeth))
+    predicted = belt_vertices(REVERSED, SECTION, segments, teeth)
+    assert belt_rings(mesh, 4) == pytest.approx(predicted, abs=1e-12)
+
+
+def test_a_belt_with_a_reverse_bend_is_one_closed_band():
+    mesh = molejo.evaluate(belt(circles=REVERSED, path=32, teeth=toothed(count=60)))
+    assert watertight_failures(mesh.faces) == []
+    assert signed_volume(mesh) > 0.0
+
+
+def test_circles_too_close_for_an_internal_tangent_are_refused():
+    # Two circles the belt turns opposite ways need room for the tangent
+    # to cross between them, which is the sum of the radii and not the
+    # difference: 10 apart with radii 8 and 3 has an external tangent and
+    # no internal one, and the refusal says which is missing.
+    with pytest.raises(molejo.EvaluationError) as raised:
+        molejo.evaluate(
+            belt(circles=[(0.0, 0.0, 8.0), (10.0, 0.0, 3.0, -1), (60.0, 0.0, 8.0)])
+        )
+    assert "internal tangent" in str(raised.value)
+
+
+# --- the outward tooth face -------------------------------------------------
+
+
+def test_outer_teeth_move_the_outer_face_and_nothing_else():
+    teeth = toothed(count=17, height=0.5, face="outer")
+    plain = belt_rings(molejo.evaluate(belt(circles=REVERSED, path=9)), 4)
+    geared = belt_rings(
+        molejo.evaluate(belt(circles=REVERSED, path=9, teeth=teeth)), 4
+    )
+    points = np.asarray(SECTION)
+    outer = points[:, 0] == points[:, 0].max()
+    assert geared[:, ~outer] == pytest.approx(plain[:, ~outer], abs=1e-12)
+    assert np.abs(geared[:, outer] - plain[:, outer]).max() > 0.0
+
+
+def test_the_two_tooth_faces_are_the_two_faces_of_the_section():
+    # The same belt with its teeth moved to the other face: what was the
+    # displaced face is now the still one, and the other way about.
+    segments, teeth = 9, toothed(count=17, height=0.5)
+    inward = belt_rings(
+        molejo.evaluate(belt(circles=REVERSED, path=segments, teeth=teeth)), 4
+    )
+    outward = belt_rings(
+        molejo.evaluate(
+            belt(
+                circles=REVERSED,
+                path=segments,
+                teeth=toothed(count=17, height=0.5, face="outer"),
+            )
+        ),
+        4,
+    )
+    predicted = belt_vertices(REVERSED, SECTION, segments, teeth, face="outer")
+    assert outward == pytest.approx(predicted, abs=1e-12)
+    assert not np.allclose(outward, inward)
+
+
+def test_an_absent_face_is_the_inner_one():
+    # Every v1 document means what it always meant.
+    segments, teeth = 9, toothed(count=17, height=0.5)
+    named = molejo.evaluate(
+        belt(
+            circles=REVERSED,
+            path=segments,
+            teeth=toothed(count=17, height=0.5, face="inner"),
+        )
+    )
+    silent = molejo.evaluate(belt(circles=REVERSED, path=segments, teeth=teeth))
+    assert named.vertices == pytest.approx(silent.vertices, abs=0.0)
+
+
+def test_outward_teeth_reach_into_the_circle_they_are_bent_over():
+    # What the whole pair of features is for: with the teeth on the
+    # outer face, the face that meets a circle the belt is bent
+    # backwards over is the toothed one -- so it reaches past the pitch
+    # circle into the pulley, where an inward-toothed belt would present
+    # its smooth back instead.
+    height = 0.5
+    middle = np.array(REVERSED[1][:2])
+    pitch = REVERSED[1][2]
+
+    def reach(face):
+        mesh = molejo.evaluate(
+            belt(
+                circles=REVERSED,
+                path=64,
+                teeth=toothed(count=60, height=height, face=face),
+            )
+        )
+        rings = belt_rings(mesh, 4)[64:128]  # the arc about the reversed circle
+        return np.linalg.norm(rings[:, :, :2] - middle, axis=2).min()
+
+    # A tooth crest stands `height` inside the pitch circle when the
+    # teeth are outward, and the smooth face's own offset when they are
+    # not -- the section's outer face is 0.9 from the pitch line, and on
+    # this arc that is 0.9 *toward* the centre.
+    assert reach("outer") == pytest.approx(pitch - 0.9 - height, abs=1e-9)
+    assert reach("inner") == pytest.approx(pitch - 0.9, abs=1e-9)
+
+
+def test_an_unknown_tooth_face_is_refused():
+    with pytest.raises(molejo.SpecError) as raised:
+        molejo.validate(
+            belt(circles=REVERSED, teeth=toothed(count=6, face="sideways"))
+        )
+    assert "tooth face" in str(raised.value)
+
+
+def test_an_unknown_turn_is_refused():
+    document = belt(circles=PULLEYS)
+    document["path"][0]["around"][1]["turn"] = "widdershins"
+    with pytest.raises(molejo.SpecError) as raised:
+        molejo.validate(document)
+    assert "unknown turn" in str(raised.value)
+
+
 # --- what a belt encloses ---------------------------------------------------
+
+
+def test_a_reverse_bent_belt_encloses_the_prism_between_its_faces():
+    # The areal closed form still holds over a reverse bend, and it is
+    # the strongest thing that can be said about the shape: it is
+    # computed from the mesh's own two traces and knows nothing of how
+    # the evaluator got there.
+    for face in ("inner", "outer"):
+        mesh = molejo.evaluate(
+            belt(circles=REVERSED, path=48, teeth=toothed(count=60, face=face))
+        )
+        assert signed_volume(mesh) == pytest.approx(
+            prism_between_traces(mesh, SECTION), rel=1e-12
+        )
 
 
 def test_the_belt_encloses_the_prism_between_its_faces():

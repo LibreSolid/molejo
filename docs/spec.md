@@ -27,7 +27,7 @@ placement belongs to the consumer ({doc}`concepts`).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `molejo` | yes | The spec version. This implementation reads and writes `1`. |
+| `molejo` | yes | The spec version. This implementation reads `1` and `2`, and writes the lowest a document needs. |
 | `profile` | yes | The closed planar profile to sweep. |
 | `path` | yes | An array of at least one path primitive. |
 | `loop` | no | Whether the path closes into a loop. Defaults to `false`. |
@@ -165,19 +165,37 @@ rather than produce a NaN mesh.
 ```
 
 A belt: a closed planar loop around at least two ordered circles,
-following their external tangents, clockwise seen from +Z. The circles
-are declared in the world XY plane (`center` is `[x, y]`, each `radius`
-positive), and consecutive circles must admit an external tangent — two
-circles too close for one refuse to evaluate.
+clockwise seen from +Z. The circles are declared in the world XY plane
+(`center` is `[x, y]`, each `radius` positive).
+
+Each circle may declare which way the belt turns about it:
+
+- `turn` — `"clockwise"` (the default) for a circle inside the loop,
+  which the belt wraps the ordinary way; `"counterclockwise"` for one
+  the belt is bent backwards over, which it reaches along its
+  neighbours' *internal* tangents and hugs from the far side. The loop
+  is concave there and convex everywhere else. **Spec version 2.**
+
+One formula covers both, and it is the external-tangent one with each
+radius signed by its sense: for consecutive circles at distance *L* with
+signed radii *r* and *r'*, the shared normal is `n = d·û + √(1-d²)·rot90(û)`
+for `d = (r - r')/L`, the belt touches each circle at `centre + r·n`, and
+travel runs along `(n_y, -n_x)`. Consecutive circles must admit that
+tangent — external where the two senses agree, internal where they
+differ — and two too close for one refuse to evaluate, naming which kind
+is missing.
+
+A reverse bend is how a belt is driven from *outside* its own circuit:
+two idlers hold it against a pulley standing between them, and 
+`face: "outer"` puts the teeth where the pulley is.
 
 A wrap is the one primitive that declares where it is, so it must be
 the **only** primitive in its path; and it is a closed loop by
 construction, so its document must declare `"loop": true`. Its profile
 travels with local X pointing outward and local Y along world +Z.
 
-`teeth` is an optional trapezoidal tooth pattern displacing the
-profile's inner face (the vertices at its minimum local X) toward the
-circles:
+`teeth` is an optional trapezoidal tooth pattern displacing one face of
+the profile along local X:
 
 - `pitch` — the nominal pitch of the belt standard, carried for the
   consumer; the actual period is the loop's length over `count`, which
@@ -187,6 +205,13 @@ circles:
 - `flank` — the flank shape; `"trapezoid"` is the v1 vocabulary.
 - `count` — the tooth count, a positive **integer literal**, never a
   parameter: the count fixes topology.
+- `face` — which face the teeth stand on: `"inner"` (the default, the
+  vertices at the minimum local X, displaced toward the circles) or
+  `"outer"` (the vertices at the maximum, displaced away). A belt has
+  teeth on one face and the loop decides which: inward for a belt driven
+  from inside its circuit, outward for one driven from outside it over a
+  reverse bend, where the profile frame has turned with the belt and the
+  outer face is the one against the pulley. **Spec version 2.**
 
 Where the pattern sits is declared by at most one of:
 
@@ -242,7 +267,8 @@ enforce the same rules with the same messages, held to it by shared
 rejection fixtures.
 
 What only values can reveal — an unbound parameter, a non-finite
-binding, a line to nowhere, a wrap without an external tangent — is an
+binding, a line to nowhere, a wrap without the tangent its two senses
+call for — is an
 `EvaluationError` at evaluation time, again with identical messages in
 both runtimes. Geometric sense is the author's obligation: the
 representation does not police a self-intersecting sweep or an
@@ -250,7 +276,24 @@ over-compressed spring; the consumer's tests can.
 
 ## Versioning
 
-`"molejo": 1` is the only version this implementation reads; any other
-value is rejected naming the version it found and the version it reads.
+This implementation reads `"molejo": 1` and `"molejo": 2`; any other
+value is rejected naming the version it found and the versions it reads.
 A future spec version is a new integer, and a package version carries
 the spec version it implements.
+
+A version integer is a promise about who can read a document, so it is
+held to that both ways.
+
+- **A document may not understate itself.** Version 2 added `turn` on a
+  wrap's circles and `face` on its teeth; a document declaring version 1
+  and using either is rejected naming the field that forced it, rather
+  than arriving at an older implementation as an unknown field.
+- **A document may not overstate itself either.** An author writes the
+  *lowest* version its document needs, so a shape that asks nothing of
+  version 2 emits the version 1 document it always did, byte for byte,
+  and every consumer pinned to an older molejo keeps reading everything
+  it could read before. `molejo.required_version(document)` in Python and
+  `requiredVersion(document)` in JavaScript answer the question directly.
+
+Version 2 only *adds* vocabulary. Every version 1 document is still a
+valid document and still evaluates to the same vertices.

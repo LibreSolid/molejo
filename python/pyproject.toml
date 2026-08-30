@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molejo"
-version = "0.1.0"
+version = "0.2.0"
 description = "Analytic flexible parts for mechanical CAD: parametric swept shapes evaluated identically in Python and the browser"
 # `README.md`, `LICENSE` and `NOTICE` here are symlinks to the repository
 # root's: one package directory of a two-package repository does not own

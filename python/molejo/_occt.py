@@ -23,8 +23,9 @@ pins:
   the Hermite chain is C1 by construction the whole chain needs only
   double interior knots and ``2n + 2`` poles, which are the two poles
   *P_i* -/+ *m_i*/3 straddling every point.
-* ``wrap`` is the chain of external tangent lines and the arcs between
-  them, in the world XY plane.
+* ``wrap`` is the chain of tangent lines and the arcs between them, in
+  the world XY plane -- external tangents between two circles the belt
+  turns the same way about, internal ones across a reverse bend.
 
 Sweeping is ``BRepOffsetAPI_MakePipeShell`` under the corrected-Frenet
 trihedron law, which removes the torsion twist a plain Frenet frame
@@ -92,6 +93,7 @@ from .evaluator import (
     _resolve,
     _resolve_vector,
     _spline_tangents,
+    _tooth_face,
     _wrap_circles,
     _wrap_elements,
     _wrap_pattern,
@@ -426,10 +428,15 @@ def _wrap_edges(elements, height):
 
 
 def _arc_edge(element, radius, start_angle, turn, height):
-    """One clockwise arc about a circle's centre, at world height ``height``."""
+    """One arc about a circle's centre, at world height ``height``.
+
+    Clockwise about a circle inside the loop and counterclockwise about
+    one the belt is bent backwards over, which is the axis the circle is
+    built on rather than anything about the angles.
+    """
     axes = gp_Ax2(
         _pnt(element["centre"], height),
-        gp_Dir(0.0, 0.0, -1.0),
+        gp_Dir(0.0, 0.0, -element["sense"]),
         gp_Dir(math.cos(start_angle), math.sin(start_angle), 0.0),
     )
     return BRepBuilderAPI_MakeEdge(
@@ -438,13 +445,21 @@ def _arc_edge(element, radius, start_angle, turn, height):
 
 
 def _trace_point(element, distance, across):
-    """A point of the belt's trace at local *x* = ``across``."""
+    """A point of the belt's trace at local *x* = ``across``.
+
+    On an arc the profile's local *x* is the circle's outward radial when
+    the belt turns clockwise about it and its inward radial when the belt
+    turns the other way -- the tangent has swung half a turn and taken
+    the frame with it -- so the offset is signed by the sense, and so is
+    the way the angle advances.
+    """
     if element["kind"] == "span":
         normal = element["normal"]
         along = np.array([normal[1], -normal[0]])
         return element["start"] + distance * along + across * normal
-    angle = element["from"] - distance / element["radius"]
-    return element["centre"] + (element["radius"] + across) * np.array(
+    sense = element["sense"]
+    angle = element["from"] - sense * distance / element["radius"]
+    return element["centre"] + (element["radius"] + sense * across) * np.array(
         [math.cos(angle), math.sin(angle)]
     )
 
@@ -467,7 +482,7 @@ def _tooth_breaks(origin, period, total):
     return sorted(breaks)
 
 
-def _trace_wire(elements, total, across, height, pattern):
+def _trace_wire(elements, total, across, height, pattern, toward=-1.0):
     """The closed trace of one face of the belt, and whether it spiralled.
 
     Cut at every tooth corner, each piece has a displacement linear in arc
@@ -487,7 +502,9 @@ def _trace_wire(elements, total, across, height, pattern):
     def offset(station):
         if pattern is None:
             return across
-        return across - pattern[2] * float(_modulation(station, pattern[0], pattern[1]))
+        return across + toward * pattern[2] * float(
+            _modulation(station, pattern[0], pattern[1])
+        )
 
     edges = []
     spiralled = False
@@ -509,8 +526,9 @@ def _trace_wire(elements, total, across, height, pattern):
                 edges.append(
                     _arc_edge(
                         element,
-                        element["radius"] + near,
-                        element["from"] - (here - start) / element["radius"],
+                        element["radius"] + element["sense"] * near,
+                        element["from"]
+                        - element["sense"] * (here - start) / element["radius"],
                         (there - here) / element["radius"],
                         height,
                     )
@@ -546,16 +564,21 @@ def _spiral_edge(element, start, here, there, offset, height):
     return BRepBuilderAPI_MakeEdge(interpolate.Curve()).Edge()
 
 
-def _belt_prism(elements, total, section, pattern):
+def _belt_prism(elements, total, section, pattern, face):
     """The band between the belt's two traces, extruded by its width.
 
     Exact wherever the traces are, which is everywhere but a ramp crossing
-    an arc. The outer trace carries no teeth by construction -- teeth
-    displace the inner face only -- so it is always lines and arcs.
+    an arc. Exactly one of the two traces carries the teeth -- a belt has
+    them on one face -- and the other is always lines and arcs.
     """
     across_lo, across_hi, along_lo, along_hi = section
-    outer, _ = _trace_wire(elements, total, across_hi, along_lo, None)
-    inner, spiralled = _trace_wire(elements, total, across_lo, along_lo, pattern)
+    toothed = pattern if face == "outer" else None
+    smooth = None if face == "outer" else pattern
+    outer, spiralled_out = _trace_wire(
+        elements, total, across_hi, along_lo, toothed, toward=+1.0
+    )
+    inner, spiralled_in = _trace_wire(elements, total, across_lo, along_lo, smooth)
+    spiralled = spiralled_out or spiralled_in
 
     face = BRepBuilderAPI_MakeFace(
         gp_Pln(gp_Pnt(0.0, 0.0, along_lo), gp_Dir(0.0, 0.0, 1.0)), outer
@@ -569,20 +592,20 @@ def _belt_prism(elements, total, section, pattern):
 
 def _wrap_solid(primitive, profile, values, count, loc):
     """A belt: a prism where its section is rectangular, a sweep otherwise."""
-    centres, radii, normals = _wrap_circles(primitive, values, loc)
-    elements, total = _wrap_elements(centres, radii, normals)
+    centres, radii, senses, normals = _wrap_circles(primitive, values, loc)
+    elements, total = _wrap_elements(centres, radii, senses, normals)
     pattern = _wrap_pattern(primitive, values, elements, total, loc)
 
     section = None
     if profile["type"] == "polygon":
         section = _rectangle(_profile_points(profile, values, count))
     if section is not None:
-        return _belt_prism(elements, total, section, pattern)
+        return _belt_prism(elements, total, section, pattern, _tooth_face(primitive))
 
     if pattern is not None:
         raise NotImplementedError(
             f"{loc}.teeth: an exact toothed belt needs a rectangular section, "
-            f"because the teeth displace the profile's inner face along the loop "
+            f"because the teeth displace one face of the profile along the loop "
             f"and only a rectangle extrudes the same way at every station"
         )
 

@@ -270,15 +270,25 @@ def _profile_points(profile, values, count):
     return sampler(profile, values, count)
 
 
-def _inner_face(points):
-    """Which profile vertices the teeth displace: those at the minimum *x*.
+def _toothed_face(points, face):
+    """Which way each profile vertex is displaced, as a signed mask.
 
-    Exact equality, not a tolerance: a section whose inner face is flat
+    A belt carries its teeth on one face, and which one is the loop's
+    business rather than the section's: a belt driven from inside its
+    circuit has them on the inner face, the vertices at the minimum local
+    *x*, pushed further toward the circles; a belt driven from outside it
+    has them on the outer face, the vertices at the maximum, pushed away.
+    So this returns ``-1`` on the toothed vertices of an inner face and
+    ``+1`` on those of an outer one, and nought on the rest.
+
+    Exact equality, not a tolerance: a section whose toothed face is flat
     -- every belt's is -- has two or more vertices there, and one whose
-    inner face is rounded displaces a single vertex into a spike, which
+    toothed face is rounded displaces a single vertex into a spike, which
     is authorship rather than something molejo guesses at.
     """
-    return points[:, 0] == points[:, 0].min()
+    if face == "outer":
+        return (points[:, 0] == points[:, 0].max()).astype(np.float64)
+    return -(points[:, 0] == points[:, 0].min()).astype(np.float64)
 
 
 # --- paths -----------------------------------------------------------------
@@ -632,25 +642,42 @@ def _sample_spline(primitive, values, segments, frame, loc):
     return centres, axes, frame
 
 
+#: What a circle's declared ``turn`` is, as the sign the belt runs it
+#: with: ``+1`` for a circle inside the loop, which the belt bends around
+#: the ordinary way, ``-1`` for one outside it, which the belt is bent
+#: backwards over.
+_TURNS = {"clockwise": 1.0, "counterclockwise": -1.0}
+
+
 def _wrap_circles(primitive, values, loc):
-    """The circles a belt runs outside, and the normal it touches each on.
+    """The circles a belt runs, the sense of each, and its touching normal.
 
     A wrap is planar -- it lies in the world XY plane, because its
-    circles are declared there -- and it runs the external tangents,
-    clockwise seen from ``+Z``, touching every circle along its outward
-    normal. For consecutive circles at distance *L* with radii *r* and
-    *r'*, the shared outward normal is
+    circles are declared there -- and the loop as a whole runs clockwise
+    seen from ``+Z``. A circle it turns clockwise about is one it wraps
+    from outside, as a belt wraps a pulley inside its own circuit; a
+    circle it turns counterclockwise about is one it is bent backwards
+    over, and the belt reaches it along the *internal* tangents of its
+    neighbours.
+
+    One formula covers both, and it is molejo's own with each radius
+    signed by its sense. For consecutive circles at distance *L* with
+    signed radii *r* and *r'*, the shared normal is
 
         n = delta*chat + sqrt(1 - delta^2)*rot90(chat),  delta = (r - r')/L
 
-    and the direction of travel is ``(n_y, -n_x)``. Both refusals a wrap
-    can meet through parameter values live here, so the mesh and the
+    the belt touches each circle at ``centre + r*n`` with *r* signed, and
+    the direction of travel is ``(n_y, -n_x)``. Where the two senses
+    agree, ``delta`` is the difference of the radii and this is the
+    external tangent it has always been; where they differ it is their
+    sum, and the tangent crosses between the circles. Both refusals a
+    wrap can meet through parameter values live here, so the mesh and the
     B-rep say the same words.
     """
     circles = primitive["around"]
     count = len(circles)
 
-    centres, radii = [], []
+    centres, radii, senses = [], [], []
     for index, circle in enumerate(circles):
         centres.append(
             _resolve_vector(circle["center"], values, f"{loc}.around[{index}].center")
@@ -662,16 +689,18 @@ def _wrap_circles(primitive, values, loc):
                 f"{_describe(radius)}"
             )
         radii.append(radius)
+        senses.append(_TURNS[circle.get("turn", "clockwise")])
 
     normals = []
     for index in range(count):
         following = (index + 1) % count
         span = centres[following] - centres[index]
         length = float(np.linalg.norm(span))
-        gap = radii[index] - radii[following]
+        gap = senses[index] * radii[index] - senses[following] * radii[following]
         if length <= abs(gap):
+            kind = "external" if senses[index] == senses[following] else "internal"
             raise EvaluationError(
-                f"{loc}.around[{following}]: a wrap needs an external tangent between "
+                f"{loc}.around[{following}]: a wrap needs an {kind} tangent between "
                 f"consecutive circles; around[{index}] and around[{following}] are too "
                 f"close for one"
             )
@@ -680,19 +709,25 @@ def _wrap_circles(primitive, values, loc):
         across = np.array([-direction[1], direction[0]])
         normals.append(delta * direction + math.sqrt(1.0 - delta * delta) * across)
 
-    return centres, radii, normals
+    return centres, radii, senses, normals
 
 
-def _wrap_elements(centres, radii, normals):
+def _wrap_elements(centres, radii, senses, normals):
     """The 2k elements of the loop, each with the station it starts at.
 
     Span 0, the arc about circle 1, span 1, … and finally the arc about
     circle 0, so the loop's own origin is where the belt leaves circle 0.
     A span is a straight run between two tangent points; an arc runs
-    clockwise about a circle from the normal the belt arrives on to the
-    one it leaves on. Nothing here is sampled: this is the exact
-    decomposition the B-rep evaluator turns into line and arc edges, and
-    the one the mesh evaluator then spends its segments on.
+    about a circle from the ray the belt arrives on to the one it leaves
+    on, clockwise or counterclockwise as that circle's sense says.
+    Nothing here is sampled: this is the exact decomposition the B-rep
+    evaluator turns into line and arc edges, and the one the mesh
+    evaluator then spends its segments on.
+
+    An arc's ``from`` is the angle of the point the belt arrives at, not
+    of the normal it arrives on: on a circle the belt hugs from the far
+    side the two differ by half a turn, and it is the point that has to
+    be right for the element to start where the span ended.
     """
     count = len(radii)
     elements = []
@@ -700,9 +735,10 @@ def _wrap_elements(centres, radii, normals):
     for index in range(count):
         following = (index + 1) % count
         normal = normals[index]
+        sense, onward = senses[index], senses[following]
 
-        start = centres[index] + radii[index] * normal
-        end = centres[following] + radii[following] * normal
+        start = centres[index] + sense * radii[index] * normal
+        end = centres[following] + onward * radii[following] * normal
         length = float(np.linalg.norm(end - start))
         elements.append(
             {
@@ -716,15 +752,18 @@ def _wrap_elements(centres, radii, normals):
         )
         travelled += length
 
-        arrival = math.atan2(normal[1], normal[0])
-        departure = math.atan2(normals[following][1], normals[following][0])
-        turn = (arrival - departure) % (2.0 * math.pi)
+        arrival = math.atan2(onward * normal[1], onward * normal[0])
+        departure = math.atan2(
+            onward * normals[following][1], onward * normals[following][0]
+        )
+        turn = (onward * (arrival - departure)) % (2.0 * math.pi)
         radius = radii[following]
         elements.append(
             {
                 "kind": "arc",
                 "centre": centres[following],
                 "radius": radius,
+                "sense": onward,
                 "from": arrival,
                 "turn": turn,
                 "station": travelled,
@@ -743,8 +782,8 @@ def _wrap_geometry(primitive, values, segments, loc):
     arc length -- uniformly in angle on an arc -- and a joint's ring
     belongs to the element that leaves it, as in any chain.
     """
-    centres, radii, normals = _wrap_circles(primitive, values, loc)
-    elements, travelled = _wrap_elements(centres, radii, normals)
+    centres, radii, senses, normals = _wrap_circles(primitive, values, loc)
+    elements, travelled = _wrap_elements(centres, radii, senses, normals)
     count = len(radii)
 
     rings = 2 * count * segments
@@ -764,13 +803,18 @@ def _wrap_geometry(primitive, values, segments, loc):
             tangents[at : at + segments, 1] = -normal[0]
         else:
             centre, radius = element["centre"], element["radius"]
-            angles = element["from"] - element["turn"] * steps
+            sense = element["sense"]
+            angles = element["from"] - sense * element["turn"] * steps
             cosine = np.cos(angles)
             sine = np.sin(angles)
             ring_centres[at : at + segments, 0] = centre[0] + radius * cosine
             ring_centres[at : at + segments, 1] = centre[1] + radius * sine
-            tangents[at : at + segments, 0] = sine
-            tangents[at : at + segments, 1] = -cosine
+            # The belt runs the other way round a circle it is bent
+            # backwards over, and the tangent turns with it -- which is
+            # what swings the profile's local x from pointing away from
+            # that circle to pointing at it, and so swings the teeth.
+            tangents[at : at + segments, 0] = sense * sine
+            tangents[at : at + segments, 1] = -sense * cosine
         stations[at : at + segments] = station + steps * length
         at += segments
 
@@ -859,6 +903,16 @@ def _wrap_pattern(primitive, values, elements, length, loc):
     return origin, length / teeth["count"], height
 
 
+def _tooth_face(primitive):
+    """Which face of the section a wrap's teeth stand on.
+
+    A belt with no teeth still resolves an anchor or a phase, so the
+    default is asked for even when there is nothing to displace.
+    """
+    teeth = primitive.get("teeth")
+    return "inner" if teeth is None else teeth.get("face", "inner")
+
+
 def _wrap_displacement(primitive, values, segments, loc):
     """How far each ring's inner face is pushed toward the circles."""
     if (
@@ -893,18 +947,18 @@ _SAMPLERS = {
 # --- mesh assembly ---------------------------------------------------------
 
 
-def _wall_vertices(centres, axes, points, inner=None, displacement=None):
+def _wall_vertices(centres, axes, points, toothed=None, displacement=None):
     """Ring-major wall vertices: ``ring*M + j``, in the ring's own frame.
 
-    ``displacement`` is a per-ring offset pushing the profile's inner
-    face -- the vertices ``inner`` marks -- toward the negative local
-    *x*; that is what a tooth is. Without it the profile is the same at
-    every ring, which is every primitive but a toothed wrap.
+    ``displacement`` is a per-ring offset pushing the profile's toothed
+    face along local *x*, in the direction ``toothed`` gives each vertex;
+    that is what a tooth is. Without it the profile is the same at every
+    ring, which is every primitive but a toothed wrap.
     """
     u = np.broadcast_to(points[:, 0], (len(centres), len(points)))
     v = points[:, 1]
     if displacement is not None:
-        u = u - displacement[:, None] * inner[None, :]
+        u = u + displacement[:, None] * toothed[None, :]
     return (
         centres[:, None, :]
         + u[:, :, None] * axes[:, None, 0, :]
@@ -1054,11 +1108,14 @@ def evaluate(document, values=None):
     displacement = (
         _wrap_displacement(path[0], values, segments, "path[0]") if looped else None
     )
+    toothed = (
+        _toothed_face(points, _tooth_face(path[0]))
+        if displacement is not None
+        else None
+    )
 
     rings = len(centres)
-    walls = _wall_vertices(
-        centres, axes, points, _inner_face(points), displacement
-    ).reshape(-1, 3)
+    walls = _wall_vertices(centres, axes, points, toothed, displacement).reshape(-1, 3)
     if looped:
         return Mesh(vertices=np.ascontiguousarray(walls), faces=_faces(rings, count, True))
 

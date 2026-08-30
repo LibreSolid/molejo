@@ -40,14 +40,31 @@ __all__ = [
     "PRIMITIVE_TYPES",
     "PROFILE_TYPES",
     "SPEC_VERSION",
+    "SPEC_VERSIONS",
+    "TOOTH_FACES",
     "TOOTH_FLANKS",
+    "WRAP_TURNS",
     "SpecError",
     "parameter_names",
+    "required_version",
     "validate",
 ]
 
-#: The spec version this implementation reads and writes.
-SPEC_VERSION = 1
+#: The spec versions this implementation reads, oldest first.
+#:
+#: Two of them, because v2 only *adds* vocabulary: a v1 document says
+#: exactly what it always said and evaluates to the same vertices, so
+#: refusing it would be a break with nothing behind it. What the version
+#: integer buys is the other direction -- a document using v2 vocabulary
+#: cannot be read by a v1 implementation, and must say so rather than
+#: arriving as an unknown field.
+SPEC_VERSIONS = (1, 2)
+
+#: The newest spec version this implementation reads, and the highest it
+#: ever writes. An author writes the *lowest* version its document needs
+#: (see :func:`required_version`), so a shape that asks nothing of v2
+#: authors the v1 document it always did.
+SPEC_VERSION = SPEC_VERSIONS[-1]
 
 #: The closed v1 profile vocabulary.
 PROFILE_TYPES = ("circle", "polygon")
@@ -58,6 +75,20 @@ PRIMITIVE_TYPES = ("arc", "helix", "line", "spline", "wrap")
 #: The closed v1 tooth-flank vocabulary (piecewise-linear keeps a toothed
 #: belt analytic in B-rep; curved flanks wait for a project to demand them).
 TOOTH_FLANKS = ("trapezoid",)
+
+#: Which face of the section the teeth stand on. A belt has teeth on one
+#: face and the loop decides which one that is: a belt driven from inside
+#: its own circuit carries them on the inner face, and one driven from
+#: outside -- pressed onto a pulley by two guide bearings, which is what a
+#: reverse bend is for -- carries them on the outer.
+TOOTH_FACES = ("inner", "outer")
+
+#: Which way the belt turns as it goes around one circle. The loop as a
+#: whole runs clockwise seen from +Z, and a circle it turns
+#: counterclockwise about is one it is bent backwards over: the belt
+#: leaves its neighbours on their inner tangents, hugs that circle from
+#: the far side, and the loop is concave there.
+WRAP_TURNS = ("clockwise", "counterclockwise")
 
 _SLOT_FORM = '{"param": "<name>"}'
 
@@ -192,6 +223,39 @@ def _check_count(value, loc, minimum=1):
 # --- the document ----------------------------------------------------------
 
 
+def _required_version(document):
+    """The lowest spec version that can express `document`, and where.
+
+    Structure alone, read off the document rather than tracked while it
+    is validated: a wrap turning counterclockwise about a circle, or
+    standing its teeth on the outer face, is v2 vocabulary and nothing
+    else is yet. The location comes back with it so a document that
+    understates its version can be told which field forced it.
+    """
+    for index, primitive in enumerate(document["path"]):
+        if not isinstance(primitive, dict) or primitive.get("type") != "wrap":
+            continue
+        loc = f"path[{index}]"
+        for at, circle in enumerate(primitive["around"]):
+            if isinstance(circle, dict) and "turn" in circle:
+                return 2, f"{loc}.around[{at}].turn"
+        teeth = primitive.get("teeth")
+        if isinstance(teeth, dict) and "face" in teeth:
+            return 2, f"{loc}.teeth.face"
+    return 1, None
+
+
+def required_version(document):
+    """The lowest spec version that can express `document`.
+
+    What an author writes into ``molejo``: a shape that asks nothing of
+    v2 authors the v1 document it always did, so an existing consumer
+    keeps reading everything it could read before, and only a document
+    it genuinely cannot evaluate is marked as one it cannot read.
+    """
+    return _required_version(document)[0]
+
+
 def validate(document):
     """Validate a molejo document, raising :class:`SpecError` on the first
     offending element. Returns ``None`` when the document is a valid spec."""
@@ -205,15 +269,31 @@ def validate(document):
 
     version = document["molejo"]
     if not _is_integer(version):
-        raise SpecError(f"spec.molejo: must be the integer 1, got {_render(version)}")
-    if int(version) != SPEC_VERSION:
+        raise SpecError(
+            f"spec.molejo: must be one of the integers "
+            f"{', '.join(str(known) for known in SPEC_VERSIONS)}, got "
+            f"{_render(version)}"
+        )
+    if int(version) not in SPEC_VERSIONS:
         raise SpecError(
             f"spec.molejo: unsupported spec version {_render(version)}; this "
-            f"implementation reads spec version {SPEC_VERSION}"
+            f"implementation reads spec version "
+            f"{' and '.join(str(known) for known in SPEC_VERSIONS)}"
         )
 
     _check_profile(document["profile"], "profile")
     _check_path(document["path"], "path")
+
+    # What the version integer is for: a document may not use vocabulary
+    # its own declared version cannot express, or the number would be a
+    # label rather than a promise about who can read it.
+    needed, because = _required_version(document)
+    if int(version) < needed:
+        raise SpecError(
+            f"spec.molejo: this document declares spec version "
+            f"{_render(version)} but uses spec version {needed} vocabulary "
+            f"at {because}"
+        )
 
     if "loop" in document and not isinstance(document["loop"], bool):
         raise SpecError(f"loop: must be a boolean, got {_kind(document['loop'])}")
@@ -330,14 +410,22 @@ def _check_wrap_circles(around, loc):
     for index, circle in enumerate(around):
         circle_loc = f"{loc}[{index}]"
         _check_object(circle, circle_loc)
-        _check_fields(circle, circle_loc, ("center", "radius"))
+        _check_fields(circle, circle_loc, ("center", "radius"), optional=("turn",))
         _check_vector(circle["center"], f"{circle_loc}.center", 2)
         _check_slot(circle["radius"], f"{circle_loc}.radius")
+        # Which way the belt runs this circle is topology, like the tooth
+        # count: it decides which tangents the loop takes and so which
+        # elements it has, so it is a literal and never a parameter.
+        if "turn" in circle and circle["turn"] not in WRAP_TURNS:
+            raise SpecError(
+                f"{circle_loc}.turn: unknown turn {_quote(circle['turn'])}; expected "
+                f"one of {', '.join(WRAP_TURNS)}"
+            )
 
 
 def _check_teeth(teeth, loc):
     _check_object(teeth, loc)
-    _check_fields(teeth, loc, ("pitch", "height", "flank", "count"))
+    _check_fields(teeth, loc, ("pitch", "height", "flank", "count"), optional=("face",))
     _check_slot(teeth["pitch"], f"{loc}.pitch")
     _check_slot(teeth["height"], f"{loc}.height")
     flank = teeth["flank"]
@@ -345,6 +433,11 @@ def _check_teeth(teeth, loc):
         raise SpecError(
             f"{loc}.flank: unknown tooth flank {_quote(flank)}; expected one of "
             f"{', '.join(TOOTH_FLANKS)}"
+        )
+    if "face" in teeth and teeth["face"] not in TOOTH_FACES:
+        raise SpecError(
+            f"{loc}.face: unknown tooth face {_quote(teeth['face'])}; expected one of "
+            f"{', '.join(TOOTH_FACES)}"
         )
     # The tooth count fixes topology, so it can never follow a parameter.
     _check_count(teeth["count"], f"{loc}.count")
