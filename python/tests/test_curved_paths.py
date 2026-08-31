@@ -48,7 +48,7 @@ QUARTER = math.pi / 2.0
 def bend(reach=20.0, wire=1.5, radius=6.0, rise=10.0, path=4, profile=8):
     """A quarter-bend tube: line up +Z, a quarter turn, a line along +X."""
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": wire},
         "path": [
             {"type": "line", "to": [0.0, 0.0, rise]},
@@ -68,7 +68,7 @@ def bend(reach=20.0, wire=1.5, radius=6.0, rise=10.0, path=4, profile=8):
 def elbow(angle=QUARTER, wire=1.5, radius=6.0, path=24, profile=48):
     """The bend's arc on its own, so the arc answers for its own geometry."""
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": wire},
         "path": [
             {
@@ -86,7 +86,7 @@ def elbow(angle=QUARTER, wire=1.5, radius=6.0, path=24, profile=48):
 def spring(wire=1.0, radius=6.0, turns=2.5, height=30.0, path=48, profile=24):
     """A coil spring: the helix a valve spring is."""
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": wire},
         "path": [{"type": "helix", "radius": radius, "turns": turns, "height": height}],
         "loop": False,

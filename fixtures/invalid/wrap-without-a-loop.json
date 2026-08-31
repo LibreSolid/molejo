@@ -1,7 +1,7 @@
 {
   "name": "wrap in a document that does not declare its loop",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "polygon", "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]},
     "path": [
       {

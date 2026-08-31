@@ -40,7 +40,7 @@ place they live:
 
 What this build evaluates is a circle or polygon profile swept along a
 chain of ``line``, ``arc``, ``helix`` and ``spline`` primitives, or
-around a ``wrap`` -- the whole v1 path vocabulary. What still raises
+around a ``wrap`` -- the whole 0.1 path vocabulary. What still raises
 :class:`NotImplementedError` naming itself is ``loop: true`` on a chain
 that is not a wrap, which waits on an end frame that transport does not
 bring back in general.
@@ -250,7 +250,7 @@ def _polygon_points(profile, values, count):
     return points
 
 
-#: The profiles this build evaluates. One missing from here is valid v1
+#: The profiles this build evaluates. One missing from here is valid 0.1
 #: vocabulary that raises naming itself.
 _PROFILES = {
     "circle": _circle_points,
@@ -932,7 +932,7 @@ def _wrap_displacement(primitive, values, segments, loc):
     return height * _modulation(wrap["stations"], origin, period)
 
 
-#: The whole v1 path vocabulary, each primitive with its sampler. There is
+#: The whole 0.1 path vocabulary, each primitive with its sampler. There is
 #: no fallback here because there is nothing left to fall back from:
 #: validation refuses a primitive this table does not name.
 _SAMPLERS = {

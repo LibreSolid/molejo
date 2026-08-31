@@ -2,7 +2,7 @@
   "name": "loom lead-in: a spline continuing a line without a kink",
   "description": "A spline following another primitive. The bulkhead fitting holds the filament straight for 20 along +Y, and the spline that follows declares no start tangent, so it leaves the way it came: the joint is C1 and the frame crosses it unturned, which is a thing no literal tangent could say when the lead-in is parameter-bound. Five segments on the line and five on each of the spline's two spans give 16 rings, the joint ring belonging to the spline that leaves it. An evaluator that defaulted the start tangent to the first chord, duplicated the joint ring, or re-transported the frame there fails here and nowhere else.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 2.0

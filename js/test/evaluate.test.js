@@ -18,7 +18,7 @@ import { evaluate, EvaluationError, SpecError } from '../src/index.js';
 
 function cylinder({ radius = 5.0, to = [0.0, 0.0, 12.0], path = 4, profile = 12 } = {}) {
   return {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'circle', radius },
     path: [{ type: 'line', to }],
     loop: false,
@@ -257,7 +257,7 @@ test('a non-positive radius is refused', () => {
 
 function bend({ reach = 20.0, path = 4, profile = 8 } = {}) {
   return {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'circle', radius: 1.5 },
     path: [
       { type: 'line', to: [0.0, 0.0, 10.0] },
@@ -276,7 +276,7 @@ function bend({ reach = 20.0, path = 4, profile = 8 } = {}) {
 
 function spring({ turns = 2.5, height = 30.0, path = 24, profile = 8 } = {}) {
   return {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'circle', radius: 1.0 },
     path: [{ type: 'helix', radius: 6.0, turns, height }],
     loop: false,
@@ -393,7 +393,7 @@ function belt({
   if (anchor !== undefined) wrap.anchor = anchor;
   if (phase !== undefined) wrap.phase = phase;
   return {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'polygon', points: SECTION },
     path: [wrap],
     loop: true,
@@ -455,7 +455,7 @@ test('a running belt re-evaluates into the caller buffers', () => {
 
 test('a polygon profile is its declared points, in order', () => {
   const document = {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'polygon', points: [[0, 0], [4, 0], [4, 1], [1, 3]] },
     path: [{ type: 'line', to: [0.0, 0.0, 10.0] }],
     loop: false,
@@ -546,7 +546,7 @@ function loom({
   if (startTangent !== undefined) spline.start_tangent = startTangent;
   if (endTangent !== undefined) spline.end_tangent = endTangent;
   return {
-    molejo: 1,
+    molejo: '0.1',
     profile: { type: 'circle', radius: 2.0 },
     path: lead === undefined ? [spline] : [{ type: 'line', to: lead }, spline],
     loop: false,

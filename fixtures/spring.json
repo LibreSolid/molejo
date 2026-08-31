@@ -2,7 +2,7 @@
   "name": "spring: a helix at two pitches",
   "description": "A coil spring: wire radius 1, coil radius 6, 2.5 turns -- a count that is not an integer and does not move -- with its height bound to the parameter 'height'. The two bindings are the same spring free and compressed, so the coils close up while the vertex numbering holds still. Each ring is perpendicular to the local helix tangent, which is inclined by the pitch angle, so the wire's cross-section stays a circle of radius 1 at both pitches; an evaluator that kept the rings square to the coil axis shears the wire into an ellipse and fails the compressed case hardest.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 1.0

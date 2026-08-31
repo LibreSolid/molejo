@@ -17,27 +17,34 @@
 
 /** The spec versions this implementation reads, oldest first.
  *
- * Two of them, because v2 only *adds* vocabulary: a v1 document says
+ * A spec version is the `MAJOR.MINOR` of the release that introduced it,
+ * written as a string: `"0.1"` is the spec molejo 0.1.0 shipped (which
+ * that release spelled as the integer `1`), and `"0.2"` is the reverse
+ * bend and the outer tooth face. A string because `0.10` and `0.1` are
+ * the same float, and the tenth minor version has to be tellable from
+ * the first.
+ *
+ * Two of them, because 0.2 only *adds* vocabulary: a 0.1 document says
  * exactly what it always said and evaluates to the same vertices, so
  * refusing it would be a break with nothing behind it. What the version
- * integer buys is the other direction -- a document using v2 vocabulary
- * cannot be read by a v1 implementation, and must say so rather than
- * arriving as an unknown field. */
-export const SPEC_VERSIONS = [1, 2];
+ * buys is the other direction -- a document using 0.2 vocabulary cannot
+ * be read by a 0.1 implementation, and must say so rather than arriving
+ * as an unknown field. */
+export const SPEC_VERSIONS = ['0.1', '0.2'];
 
 /** The newest spec version this implementation reads, and the highest it
  * ever writes. An author writes the *lowest* version its document needs
- * (see `requiredVersion`), so a shape that asks nothing of v2 authors the
- * v1 document it always did. */
+ * (see `requiredVersion`), so a shape that asks nothing of 0.2 authors the
+ * 0.1 document it always did. */
 export const SPEC_VERSION = SPEC_VERSIONS[SPEC_VERSIONS.length - 1];
 
-/** The closed v1 profile vocabulary. */
+/** The closed 0.1 profile vocabulary. */
 export const PROFILE_TYPES = ['circle', 'polygon'];
 
-/** The closed v1 path-primitive vocabulary. */
+/** The closed 0.1 path-primitive vocabulary. */
 export const PRIMITIVE_TYPES = ['arc', 'helix', 'line', 'spline', 'wrap'];
 
-/** The closed v1 tooth-flank vocabulary. */
+/** The closed 0.1 tooth-flank vocabulary. */
 export const TOOTH_FLANKS = ['trapezoid'];
 
 /** Which face of the section the teeth stand on. A belt has teeth on one
@@ -193,7 +200,7 @@ function checkCount(value, loc, minimum = 1) {
  *
  * Structure alone, read off the document rather than tracked while it is
  * validated: a wrap turning counterclockwise about a circle, or standing
- * its teeth on the outer face, is v2 vocabulary and nothing else is yet.
+ * its teeth on the outer face, is 0.2 vocabulary and nothing else is yet.
  * The location comes back with it so a document that understates its
  * version can be told which field forced it.
  */
@@ -206,18 +213,19 @@ function neededVersion(document) {
     const around = primitive.around;
     for (let at = 0; at < around.length; at += 1) {
       if (isObject(around[at]) && has(around[at], 'turn')) {
-        return [2, `${loc}.around[${at}].turn`];
+        return ['0.2', `${loc}.around[${at}].turn`];
       }
     }
     if (isObject(primitive.teeth) && has(primitive.teeth, 'face')) {
-      return [2, `${loc}.teeth.face`];
+      return ['0.2', `${loc}.teeth.face`];
     }
   }
-  return [1, null];
+  return ['0.1', null];
 }
 
 /**
- * The lowest spec version that can express `document`.
+ * The lowest spec version that can express `document`, as its
+ * `MAJOR.MINOR` string.
  *
  * The twin of Python's `molejo.required_version`. This runtime authors
  * nothing, so it is exported for a consumer that emits documents of its
@@ -237,30 +245,34 @@ export function validate(document) {
   checkFields(document, 'spec', ['molejo', 'profile', 'path', 'tessellation'], ['loop']);
 
   const version = document.molejo;
-  if (!isInteger(version)) {
+  if (typeof version !== 'string') {
     throw new SpecError(
-      `spec.molejo: must be one of the integers ${SPEC_VERSIONS.join(', ')}, got ` +
-        `${render(version)}`,
+      `spec.molejo: must be a spec version string, one of ` +
+        `${SPEC_VERSIONS.map(quote).join(', ')}, got ${render(version)}`,
     );
   }
   if (!SPEC_VERSIONS.includes(version)) {
     throw new SpecError(
-      `spec.molejo: unsupported spec version ${render(version)}; this ` +
-        `implementation reads spec version ${SPEC_VERSIONS.join(' and ')}`,
+      `spec.molejo: unsupported spec version ${quote(version)}; this ` +
+        `implementation reads spec version ${SPEC_VERSIONS.map(quote).join(' and ')}`,
     );
   }
 
   checkProfile(document.profile, 'profile');
   checkPath(document.path, 'path');
 
-  // What the version integer is for: a document may not use vocabulary
-  // its own declared version cannot express, or the number would be a
-  // label rather than a promise about who can read it.
+  // What the version is for: a document may not use vocabulary its own
+  // declared version cannot express, or it would be a label rather than
+  // a promise about who can read it. Both versions are known to be in
+  // SPEC_VERSIONS by now, so position in that list is the whole of the
+  // ordering -- no parsing, and no opinion about a version this
+  // implementation has never heard of, which the branch above already
+  // refused.
   const [needed, because] = neededVersion(document);
-  if (version < needed) {
+  if (SPEC_VERSIONS.indexOf(version) < SPEC_VERSIONS.indexOf(needed)) {
     throw new SpecError(
-      `spec.molejo: this document declares spec version ${render(version)} but ` +
-        `uses spec version ${needed} vocabulary at ${because}`,
+      `spec.molejo: this document declares spec version ${quote(version)} but ` +
+        `uses spec version ${quote(needed)} vocabulary at ${because}`,
     );
   }
 

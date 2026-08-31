@@ -2,7 +2,7 @@
   "name": "reverse-bend belt: a wrap bent backwards over a drive pulley, teeth outward",
   "description": "The first wrap with a circle it turns the other way about, and the first belt with its teeth on the outer face -- and the two are one thing. Two 8-radius bearings 60 apart hold the belt against a 3-radius pulley between them, whose centre is bound to 'press': it leaves the first bearing on an internal tangent, hugs the pulley from the far side, and crosses back out to the second, so the loop is concave there and convex everywhere else. Because the belt turns the other way about that circle, the profile frame turns with it and the face that meets the pulley is the outer one -- which is why the teeth stand there, and what makes this a belt driven from outside its own circuit rather than from inside it. Six trapezoidal teeth circulate with 'phase'. Twelve segments on each of the 2*3 elements give 72 rings, V = 72*4 and F = 2*72*4. The bindings move the pulley as well as the pattern, because a moving reverse-bent circle changes the internal tangents on both sides of it and the loop length with them: an evaluator that took the external tangent, or turned the arc the ordinary way, or displaced the inner face, fails on the first vertex of the first case.",
   "spec": {
-    "molejo": 2,
+    "molejo": "0.2",
     "profile": {
       "type": "polygon",
       "points": [

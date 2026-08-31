@@ -1,7 +1,7 @@
 {
   "name": "parameter reference whose name is not a string",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": {"param": 3}},
     "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
     "tessellation": {"path": 32, "profile": 16}

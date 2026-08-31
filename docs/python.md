@@ -135,7 +135,7 @@ winding. Deterministic too: same document, same values, same bytes.
 Three kinds, for three questions:
 
 - {class}`~molejo.SpecError` (a `ValueError`) — the document is not a
-  valid v1 spec. Raised at authoring or parse time, naming the
+  valid spec. Raised at authoring or parse time, naming the
   offending element by its position in the document.
 - {class}`~molejo.EvaluationError` (a `ValueError`) — the document is
   valid but cannot be evaluated at these values: an unbound or
@@ -143,7 +143,7 @@ Three kinds, for three questions:
   wrap with no tangent between two of its circles. The message names
   the parameter or
   slot.
-- `NotImplementedError` — valid v1 vocabulary this build does not
+- `NotImplementedError` — valid spec vocabulary this build does not
   evaluate: `loop: true` on a path that is not a `wrap`. The message
   says exactly that.
 

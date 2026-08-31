@@ -1,7 +1,7 @@
 {
   "name": "parameter reference carrying extra fields",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": {"param": "wire", "scale": 2.0}},
     "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
     "tessellation": {"path": 32, "profile": 16}

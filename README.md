@@ -91,15 +91,15 @@ needed.
 
 ## Status
 
-Version 0.2.0, implementing spec version 2: profiles (circle, polygon)
-and path primitives (line, arc, helix, spline, wrap). Both packages
-parse and validate the document against shared fixtures; the Python
-package also authors it (`Shape`, `Circle`, …, `P`). Spec version 1
-documents are read unchanged — version 2 only adds vocabulary — and an
-author writes the lowest version a document needs, so a shape that asks
-nothing of version 2 emits the version 1 document it always did.
+Version 0.2.0, implementing spec version `"0.2"`: profiles (circle,
+polygon) and path primitives (line, arc, helix, spline, wrap). Both
+packages parse and validate the document against shared fixtures; the
+Python package also authors it (`Shape`, `Circle`, …, `P`). Spec version
+`"0.1"` documents are read unchanged — `"0.2"` only adds vocabulary — and
+an author writes the lowest version a document needs, so a shape that
+asks nothing of `"0.2"` emits the `"0.1"` document it always did.
 
-Circle and polygon profiles swept along the whole v1 path vocabulary —
+Circle and polygon profiles swept along the whole path vocabulary —
 `line`, `arc`, `helix`, `spline` and `wrap` — evaluate in both runtimes,
 singly or chained, capped or closed into a loop and watertight either
 way, from Python as numpy arrays and binary STL, from JavaScript as
@@ -126,11 +126,19 @@ geometrically tested engines and 3D printers (a V8 engine's valve
 springs, a Metamaquina 2's drive belts) rather than only in this
 repository's fixtures.
 
-A package version carries the spec version it implements. Both packages
-carried spec v1 at `0.1.0` and carry spec v2 at `0.2.0`, and release
-together for a given spec version.
+A spec version is the `MAJOR.MINOR` of the release that introduced it,
+written as a JSON string — one number to remember rather than two. Before
+1.0, a release that changes the spec mints a spec version equal to its
+own `MAJOR.MINOR`, and a release that does not keeps the one it
+inherited. So `0.1.0` carries spec `"0.1"` and `0.2.0` carries spec
+`"0.2"`, and both packages release together for a given spec version.
 One document, two implementations: neither runtime is ever published
 against a spec version the other has not caught up to.
+
+molejo `0.1.0` shipped before this rule and wrote the integer `1` where
+its successors write `"0.1"`. The name changed; the spec did not. A
+document still carrying the integer is refused by name rather than
+guessed at.
 
 Publishing to PyPI (`python/`) and npm (`js/`) is the maintainer's
 explicit decision, never a side effect of building: `scripts/check-dist`,

@@ -1,7 +1,7 @@
 {
   "name": "empty path chain",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [],
     "tessellation": {"path": 32, "profile": 16}

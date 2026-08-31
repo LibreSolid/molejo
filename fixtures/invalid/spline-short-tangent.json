@@ -1,7 +1,7 @@
 {
   "name": "spline end tangent given two components",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [
       {

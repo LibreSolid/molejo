@@ -62,7 +62,7 @@ def test_from_dict_validates():
     with pytest.raises(SpecError, match="squiggle"):
         Shape.from_dict(
             {
-                "molejo": 1,
+                "molejo": "0.1",
                 "profile": {"type": "circle", "radius": 2.0},
                 "path": [{"type": "squiggle"}],
                 "tessellation": {"path": 32, "profile": 16},
@@ -92,7 +92,7 @@ def test_an_authored_shape_validates():
     assert validate(spring().to_dict()) is None
 
 
-# --- the whole v1 vocabulary ----------------------------------------------
+# --- the whole 0.1 vocabulary ----------------------------------------------
 
 
 def test_every_constructor_round_trips():
@@ -336,7 +336,7 @@ def test_an_authored_shape_and_its_document_evaluate_identically():
 
 
 def test_an_authored_loom_evaluates():
-    # The last primitive of the v1 vocabulary to arrive: an authored
+    # The last primitive of the 0.1 vocabulary to arrive: an authored
     # spline is an evaluation like any other.
     loom = Shape(
         profile=Circle(radius=2.0),

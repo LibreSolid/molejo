@@ -2,7 +2,7 @@
   "name": "quarter bend: a line, a quarter arc, and a line",
   "description": "The first chained path. A tube of wire radius 1.5 runs 10 up +Z, turns a quarter circle of radius 6 about +Y, and runs on to a reach bound to the parameter 'reach'. Four segments are spent on each of the three primitives, so the path has 12 segments and 13 rings, and the ring at each joint is sampled once by the primitive that leaves it. Both joints are tangent-continuous, so the profile must cross them without a seam or a roll; an evaluator that split the segment budget across the chain, duplicated a joint ring, or re-transported the frame at a joint fails here and nowhere else.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 1.5

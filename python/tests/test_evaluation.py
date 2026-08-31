@@ -32,7 +32,7 @@ from molejo.evaluator import EvaluationError
 def cylinder(radius=5.0, length=12.0, path=4, profile=64):
     """A circle profile swept along one line up the +Z axis."""
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": radius},
         "path": [{"type": "line", "to": [0.0, 0.0, length]}],
         "loop": False,
@@ -202,7 +202,7 @@ def test_the_arrays_are_float64_vertices_and_integer_faces():
 
 def slanted(to, radius=5.0, path=4, profile=24):
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": radius},
         "path": [{"type": "line", "to": list(to)}],
         "loop": False,
@@ -377,7 +377,7 @@ def test_an_invalid_document_is_rejected_before_any_geometry():
     with pytest.raises(molejo.SpecError, match="squiggle"):
         molejo.evaluate(
             {
-                "molejo": 1,
+                "molejo": "0.1",
                 "profile": {"type": "circle", "radius": 1.0},
                 "path": [{"type": "squiggle"}],
                 "tessellation": {"path": 4, "profile": 8},

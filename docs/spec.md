@@ -1,7 +1,7 @@
 # The spec
 
 A molejo shape is a JSON document. This page is the reference for spec
-**version 1** — every field, every rule, and the errors that enforce
+**version 0.2** — every field, every rule, and the errors that enforce
 them. The Python authoring layer ({doc}`python`) emits exactly this
 document; the JavaScript evaluator ({doc}`javascript`) consumes exactly
 this document; a hand-written spec is exactly as good an input as an
@@ -9,7 +9,7 @@ authored one.
 
 ```json
 {
-  "molejo": 1,
+  "molejo": "0.1",
   "profile": {"type": "circle", "radius": 2.0},
   "path": [{"type": "helix", "radius": 14.0, "turns": 6.5,
             "height": {"param": "height"}}],
@@ -27,7 +27,7 @@ placement belongs to the consumer ({doc}`concepts`).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `molejo` | yes | The spec version. This implementation reads `1` and `2`, and writes the lowest a document needs. |
+| `molejo` | yes | The spec version, as a `MAJOR.MINOR` string. This implementation reads `"0.1"` and `"0.2"`, and writes the lowest a document needs. |
 | `profile` | yes | The closed planar profile to sweep. |
 | `path` | yes | An array of at least one path primitive. |
 | `loop` | no | Whether the path closes into a loop. Defaults to `false`. |
@@ -174,7 +174,7 @@ Each circle may declare which way the belt turns about it:
   which the belt wraps the ordinary way; `"counterclockwise"` for one
   the belt is bent backwards over, which it reaches along its
   neighbours' *internal* tangents and hugs from the far side. The loop
-  is concave there and convex everywhere else. **Spec version 2.**
+  is concave there and convex everywhere else. **Spec version 0.2.**
 
 One formula covers both, and it is the external-tangent one with each
 radius signed by its sense: for consecutive circles at distance *L* with
@@ -202,7 +202,7 @@ the profile along local X:
   is what closes the pattern at the seam and keeps a moving idler
   changing the tooth pitch *length* rather than the tooth count.
 - `height` — the tooth height (non-negative).
-- `flank` — the flank shape; `"trapezoid"` is the v1 vocabulary.
+- `flank` — the flank shape; `"trapezoid"` is the whole vocabulary.
 - `count` — the tooth count, a positive **integer literal**, never a
   parameter: the count fixes topology.
 - `face` — which face the teeth stand on: `"inner"` (the default, the
@@ -211,7 +211,7 @@ the profile along local X:
   teeth on one face and the loop decides which: inward for a belt driven
   from inside its circuit, outward for one driven from outside it over a
   reverse bend, where the profile frame has turned with the belt and the
-  outer face is the one against the pulley. **Spec version 2.**
+  outer face is the one against the pulley. **Spec version 0.2.**
 
 Where the pattern sits is declared by at most one of:
 
@@ -231,7 +231,7 @@ Declaring both is rejected — they name the same tooth-pattern origin.
 to the first, and there are no end caps. A `wrap` is a loop by
 construction and its document must say so.
 
-`loop: true` on a chain of other primitives is valid v1 vocabulary that
+`loop: true` on a chain of other primitives is valid vocabulary that
 no build evaluates yet: both evaluators raise `NotImplementedError`
 naming it (closing a general chain waits on an end frame that
 rotation-minimizing transport does not bring back in general).
@@ -260,7 +260,8 @@ correspond vertex for vertex ({doc}`concepts`).
 ## Validation
 
 Validation is structural and needs no parameter values: it answers one
-question — is this a v1 molejo document — and on the first offence
+question — is this a molejo document this implementation reads — and
+on the first offence
 raises `SpecError` naming the offending element by its position
 (`path[1].to[2]`, `tessellation.profile`). Both implementations
 enforce the same rules with the same messages, held to it by shared
@@ -276,24 +277,37 @@ over-compressed spring; the consumer's tests can.
 
 ## Versioning
 
-This implementation reads `"molejo": 1` and `"molejo": 2`; any other
-value is rejected naming the version it found and the versions it reads.
-A future spec version is a new integer, and a package version carries
-the spec version it implements.
+A spec version is the `MAJOR.MINOR` of the release that introduced it,
+written as a JSON string. Before 1.0 there is only one number to
+remember: a release that changes the spec mints a spec version equal to
+its own `MAJOR.MINOR`, and a release that does not keeps the one it
+inherited. So `"0.2"` is the spec molejo 0.2.0 introduced, and asking
+*which molejo reads this document* is reading the field.
 
-A version integer is a promise about who can read a document, so it is
-held to that both ways.
+It is a string rather than a number because `0.10` and `0.1` are the
+same float, and the tenth minor version has to be tellable from the
+first.
 
-- **A document may not understate itself.** Version 2 added `turn` on a
-  wrap's circles and `face` on its teeth; a document declaring version 1
-  and using either is rejected naming the field that forced it, rather
-  than arriving at an older implementation as an unknown field.
+This implementation reads `"molejo": "0.1"` and `"molejo": "0.2"`; any
+other value is rejected naming what it found and the versions it reads.
+That includes the integer form — molejo 0.1.0 wrote `"molejo": 1`, and a
+document still carrying it is refused rather than read, with the message
+naming `'0.1'` as what it should say instead.
+
+A version is a promise about who can read a document, so it is held to
+that both ways.
+
+- **A document may not understate itself.** Version 0.2 added `turn` on
+  a wrap's circles and `face` on its teeth; a document declaring version
+  0.1 and using either is rejected naming the field that forced it,
+  rather than arriving at an older implementation as an unknown field.
 - **A document may not overstate itself either.** An author writes the
   *lowest* version its document needs, so a shape that asks nothing of
-  version 2 emits the version 1 document it always did, byte for byte,
-  and every consumer pinned to an older molejo keeps reading everything
-  it could read before. `molejo.required_version(document)` in Python and
+  version 0.2 emits the version 0.1 document it always did, byte for
+  byte, and every consumer pinned to an older molejo keeps reading
+  everything it could read before.
+  `molejo.required_version(document)` in Python and
   `requiredVersion(document)` in JavaScript answer the question directly.
 
-Version 2 only *adds* vocabulary. Every version 1 document is still a
+Version 0.2 only *adds* vocabulary. Every version 0.1 document is still a
 valid document and still evaluates to the same vertices.

@@ -2,7 +2,7 @@
   "name": "oblique line: a sweep whose tangent is not the start frame's",
   "description": "The same circle-along-a-line sweep, but along a line that leaves the start frame's +Z tangent, so the profile frame must be carried onto the new tangent by a rotation-minimizing turn. An evaluator that assumes the world axes passes the cylinder fixture and fails this one.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 2.5

@@ -25,28 +25,48 @@ from molejo.spec import (
 from conftest import SPRING_DOCUMENT
 
 
-def test_the_spec_versions_read_are_one_and_two():
-    # Two, because v2 only adds vocabulary: every v1 document still says
-    # what it always said. `SPEC_VERSION` is the newest of them, and the
-    # most an author ever writes.
-    assert SPEC_VERSIONS == (1, 2)
-    assert SPEC_VERSION == 2
+def test_the_spec_versions_read_are_the_releases_that_minted_them():
+    # A spec version is the MAJOR.MINOR of the release that introduced
+    # it, as a string: "0.1" is what molejo 0.1.0 shipped (spelled `1` at
+    # the time), "0.2" is the reverse bend. Two of them, because 0.2 only
+    # adds vocabulary: every 0.1 document still says what it always said.
+    # `SPEC_VERSION` is the newest, and the most an author ever writes.
+    assert SPEC_VERSIONS == ("0.1", "0.2")
+    assert SPEC_VERSION == "0.2"
 
 
-def test_a_document_declares_the_lowest_version_it_needs():
-    plain = {
+def test_a_numeric_version_is_refused_rather_than_read_as_the_old_spelling():
+    # molejo 0.1.0 wrote the integer 1. That spelling is gone, not
+    # aliased: the message names what it found and the versions read, so
+    # a 0.1.0-era document fails loudly and its fix is one edit.
+    document = {
         "molejo": 1,
         "profile": {"type": "circle", "radius": 2.0},
         "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
         "tessellation": {"path": 8, "profile": 8},
     }
-    assert required_version(plain) == 1
+    with pytest.raises(SpecError) as raised:
+        validate(document)
+    message = str(raised.value)
+    assert "spec.molejo" in message
+    assert "spec version string" in message
+    assert "'0.1'" in message and "'0.2'" in message
+
+
+def test_a_document_declares_the_lowest_version_it_needs():
+    plain = {
+        "molejo": "0.1",
+        "profile": {"type": "circle", "radius": 2.0},
+        "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+        "tessellation": {"path": 8, "profile": 8},
+    }
+    assert required_version(plain) == "0.1"
     assert validate(plain) is None
 
 
-def test_a_v1_document_may_not_use_v2_vocabulary():
+def test_a_0_1_document_may_not_use_0_2_vocabulary():
     document = {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {
             "type": "polygon",
             "points": [[-0.4, -1.0], [0.9, -1.0], [0.9, 1.0], [-0.4, 1.0]],
@@ -70,13 +90,13 @@ def test_a_v1_document_may_not_use_v2_vocabulary():
         "loop": True,
         "tessellation": {"path": 8, "profile": 4},
     }
-    assert required_version(document) == 2
+    assert required_version(document) == "0.2"
 
     with pytest.raises(SpecError) as raised:
         validate(document)
     assert "path[0].teeth.face" in str(raised.value)
 
-    document["molejo"] = 2
+    document["molejo"] = "0.2"
     assert validate(document) is None
 
 
@@ -113,7 +133,7 @@ def test_loop_is_optional_and_defaults_to_false(spring_document):
     ids=["line", "line-params", "arc", "helix", "spline", "spline-one-span",
          "spline-clamped"],
 )
-def test_every_v1_primitive_validates(spring_document, primitive):
+def test_every_0_1_primitive_validates(spring_document, primitive):
     spring_document["path"] = [primitive]
     assert validate(spring_document) is None
 
@@ -241,7 +261,7 @@ def test_an_anchor_span_must_be_one_the_wrap_has(spring_document, span):
     ],
     ids=["circle", "circle-param", "polygon"],
 )
-def test_every_v1_profile_validates(spring_document, profile):
+def test_every_0_1_profile_validates(spring_document, profile):
     spring_document["profile"] = profile
     if profile["type"] == "polygon":
         # A polygon is sampled at its own points, no more and no fewer.

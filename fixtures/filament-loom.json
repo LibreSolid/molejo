@@ -2,7 +2,7 @@
   "name": "filament loom: a clamped spline through two sag points",
   "description": "The loom validation case, and the whole reason the spline is clamped rather than merely interpolating. A tube of radius 2 leaves the frame's entry at the origin along +Y, sags through two declared waypoints, and arrives at the extruder head going straight down; the head's three coordinates are the parameters 'head_x', 'head_y' and 'head_z', which is the shape a sampled representation could only serve with a grid over all three. Three declared points are three spans at 6 segments each, so 19 rings -- an evaluator that spent the budget per primitive rather than per span, that took the Catmull-Rom end condition instead of the declared tangent, or that scaled a declared tangent by its own length fails here.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 2.0

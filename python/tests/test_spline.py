@@ -86,7 +86,7 @@ def loom(
         primitive["end_tangent"] = list(end_tangent)
     chain = [] if lead is None else [{"type": "line", "to": list(lead)}]
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": tube},
         "path": chain + [primitive],
         "loop": False,

@@ -23,7 +23,7 @@ into a deterministic triangle mesh::
 
 Spec version 1 is defined in :mod:`molejo.spec` and evaluated in
 :mod:`molejo.evaluator`, which sweeps a circle or polygon profile along
-the whole v1 path vocabulary -- ``line``, ``arc``, ``helix``, ``spline``
+the whole 0.1 path vocabulary -- ``line``, ``arc``, ``helix``, ``spline``
 and ``wrap`` -- open or closed into a loop.
 
 :mod:`molejo.brep` evaluates the same documents exactly, to closed OCCT

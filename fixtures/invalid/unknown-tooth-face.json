@@ -1,7 +1,7 @@
 {
   "name": "teeth on a face a belt does not have",
   "spec": {
-    "molejo": 2,
+    "molejo": "0.2",
     "profile": {
       "type": "polygon",
       "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]

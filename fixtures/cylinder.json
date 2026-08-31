@@ -2,7 +2,7 @@
   "name": "cylinder: a circle profile swept along one line",
   "description": "The first vertical slice. A circle of radius 5 swept up the +Z axis over 3 segments, its length bound to the parameter 'length'. The two bindings move every wall vertex and renumber nothing.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "circle",
       "radius": 5.0

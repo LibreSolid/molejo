@@ -118,11 +118,11 @@ departure is about one Float32 ulp. See {doc}`concepts`.
 
 ## Errors
 
-- `SpecError` — not a valid v1 document, thrown by
+- `SpecError` — not a valid molejo document, thrown by
   `parseSpec`/`validate`/`evaluate`, naming the element.
 - `EvaluationError` — a valid document that cannot be evaluated at
   these values (or into these buffers), naming the parameter, slot or
   buffer.
-- `NotImplementedError` (extends `EvaluationError`) — valid v1
+- `NotImplementedError` (extends `EvaluationError`) — valid spec
   vocabulary this build does not evaluate: `loop: true` on a path that
   is not a `wrap`.

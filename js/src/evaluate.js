@@ -56,7 +56,7 @@ export class EvaluationError extends Error {
   }
 }
 
-/** A valid part of the v1 vocabulary this build does not evaluate yet. */
+/** A valid part of the 0.1 vocabulary this build does not evaluate yet. */
 export class NotImplementedError extends EvaluationError {
   constructor(message) {
     super(message);
@@ -248,7 +248,7 @@ function polygonPoints(profile, values) {
 }
 
 /**
- * The profiles this build evaluates. One missing from here is valid v1
+ * The profiles this build evaluates. One missing from here is valid 0.1
  * vocabulary that throws naming itself.
  */
 const PROFILES = {
@@ -898,7 +898,7 @@ function wrapDisplacement(primitive, values, segments, loc) {
 }
 
 /**
- * The whole v1 path vocabulary, each primitive with its sampler. There is
+ * The whole 0.1 path vocabulary, each primitive with its sampler. There is
  * no fallback here because there is nothing left to fall back from:
  * validation refuses a primitive this table does not name.
  */

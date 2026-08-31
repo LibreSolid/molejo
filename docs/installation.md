@@ -44,7 +44,16 @@ three.js is not a dependency either: the evaluator fills plain
 
 ## Versioning
 
-A package version carries the spec version it implements. Both packages
-carry spec v1 at 0.1.0 and release together for a given spec version:
-neither runtime is ever published against a spec version the other has
-not caught up to.
+A spec version is the `MAJOR.MINOR` of the release that introduced it,
+written as a JSON string — one number to remember rather than two. Before
+1.0, a release that changes the spec mints a spec version equal to its
+own `MAJOR.MINOR`, and a release that does not keeps the one it
+inherited: 0.1.0 carries spec `"0.1"`, 0.2.0 carries spec `"0.2"`.
+
+Both packages release together for a given spec version; neither runtime
+is ever published against a spec version the other has not caught up to.
+
+molejo 0.1.0 shipped before this rule and wrote the integer `1` where its
+successors write `"0.1"`. The name changed; the spec did not, and a
+document still carrying the integer is refused by name rather than
+guessed at. See {doc}`spec`.

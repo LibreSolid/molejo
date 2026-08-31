@@ -7,7 +7,7 @@
 A molejo shape is a JSON document::
 
     {
-      "molejo": 1,
+      "molejo": "0.1",
       "profile": {"type": "circle", "radius": 2.0},
       "path": [{"type": "helix", "radius": 14.0, "turns": 6.5,
                 "height": {"param": "height"}}],
@@ -21,7 +21,7 @@ arithmetic in a spec and no default for a parameter: consumers evaluate
 their expressions to numbers and bind them at evaluation.
 
 Validation here is *structural* and needs no parameter values. It answers
-one question -- is this a v1 molejo document -- and when the answer is no
+one question -- is this a molejo document -- and when the answer is no
 it raises :class:`SpecError` naming the offending element by its position
 in the document (``path[1].to[2]``, ``tessellation.profile``). Geometric
 sense (a self-intersecting sweep, an over-compressed spring) is the
@@ -52,27 +52,34 @@ __all__ = [
 
 #: The spec versions this implementation reads, oldest first.
 #:
-#: Two of them, because v2 only *adds* vocabulary: a v1 document says
+#: A spec version is the ``MAJOR.MINOR`` of the release that introduced
+#: it, written as a string: ``"0.1"`` is the spec molejo 0.1.0 shipped
+#: (which that release spelled as the integer ``1``), and ``"0.2"`` is
+#: the reverse bend and the outer tooth face. A string because ``0.10``
+#: and ``0.1`` are the same float, and the tenth minor version has to be
+#: tellable from the first.
+#:
+#: Two of them, because 0.2 only *adds* vocabulary: a 0.1 document says
 #: exactly what it always said and evaluates to the same vertices, so
 #: refusing it would be a break with nothing behind it. What the version
-#: integer buys is the other direction -- a document using v2 vocabulary
-#: cannot be read by a v1 implementation, and must say so rather than
-#: arriving as an unknown field.
-SPEC_VERSIONS = (1, 2)
+#: buys is the other direction -- a document using 0.2 vocabulary cannot
+#: be read by a 0.1 implementation, and must say so rather than arriving
+#: as an unknown field.
+SPEC_VERSIONS = ("0.1", "0.2")
 
 #: The newest spec version this implementation reads, and the highest it
 #: ever writes. An author writes the *lowest* version its document needs
-#: (see :func:`required_version`), so a shape that asks nothing of v2
-#: authors the v1 document it always did.
+#: (see :func:`required_version`), so a shape that asks nothing of 0.2
+#: authors the 0.1 document it always did.
 SPEC_VERSION = SPEC_VERSIONS[-1]
 
-#: The closed v1 profile vocabulary.
+#: The closed 0.1 profile vocabulary.
 PROFILE_TYPES = ("circle", "polygon")
 
-#: The closed v1 path-primitive vocabulary.
+#: The closed 0.1 path-primitive vocabulary.
 PRIMITIVE_TYPES = ("arc", "helix", "line", "spline", "wrap")
 
-#: The closed v1 tooth-flank vocabulary (piecewise-linear keeps a toothed
+#: The closed 0.1 tooth-flank vocabulary (piecewise-linear keeps a toothed
 #: belt analytic in B-rep; curved flanks wait for a project to demand them).
 TOOTH_FLANKS = ("trapezoid",)
 
@@ -228,7 +235,7 @@ def _required_version(document):
 
     Structure alone, read off the document rather than tracked while it
     is validated: a wrap turning counterclockwise about a circle, or
-    standing its teeth on the outer face, is v2 vocabulary and nothing
+    standing its teeth on the outer face, is 0.2 vocabulary and nothing
     else is yet. The location comes back with it so a document that
     understates its version can be told which field forced it.
     """
@@ -238,18 +245,18 @@ def _required_version(document):
         loc = f"path[{index}]"
         for at, circle in enumerate(primitive["around"]):
             if isinstance(circle, dict) and "turn" in circle:
-                return 2, f"{loc}.around[{at}].turn"
+                return "0.2", f"{loc}.around[{at}].turn"
         teeth = primitive.get("teeth")
         if isinstance(teeth, dict) and "face" in teeth:
-            return 2, f"{loc}.teeth.face"
-    return 1, None
+            return "0.2", f"{loc}.teeth.face"
+    return "0.1", None
 
 
 def required_version(document):
     """The lowest spec version that can express `document`.
 
     What an author writes into ``molejo``: a shape that asks nothing of
-    v2 authors the v1 document it always did, so an existing consumer
+    0.2 authors the 0.1 document it always did, so an existing consumer
     keeps reading everything it could read before, and only a document
     it genuinely cannot evaluate is marked as one it cannot read.
     """
@@ -268,31 +275,35 @@ def validate(document):
     )
 
     version = document["molejo"]
-    if not _is_integer(version):
+    if not isinstance(version, str):
         raise SpecError(
-            f"spec.molejo: must be one of the integers "
-            f"{', '.join(str(known) for known in SPEC_VERSIONS)}, got "
+            f"spec.molejo: must be a spec version string, one of "
+            f"{', '.join(_quote(known) for known in SPEC_VERSIONS)}, got "
             f"{_render(version)}"
         )
-    if int(version) not in SPEC_VERSIONS:
+    if version not in SPEC_VERSIONS:
         raise SpecError(
-            f"spec.molejo: unsupported spec version {_render(version)}; this "
+            f"spec.molejo: unsupported spec version {_quote(version)}; this "
             f"implementation reads spec version "
-            f"{' and '.join(str(known) for known in SPEC_VERSIONS)}"
+            f"{' and '.join(_quote(known) for known in SPEC_VERSIONS)}"
         )
 
     _check_profile(document["profile"], "profile")
     _check_path(document["path"], "path")
 
-    # What the version integer is for: a document may not use vocabulary
-    # its own declared version cannot express, or the number would be a
-    # label rather than a promise about who can read it.
+    # What the version is for: a document may not use vocabulary its own
+    # declared version cannot express, or it would be a label rather than
+    # a promise about who can read it. Both versions are known to be in
+    # SPEC_VERSIONS by now, so position in that list is the whole of the
+    # ordering -- no parsing, and no opinion about a version this
+    # implementation has never heard of, which the branch above already
+    # refused.
     needed, because = _required_version(document)
-    if int(version) < needed:
+    if SPEC_VERSIONS.index(version) < SPEC_VERSIONS.index(needed):
         raise SpecError(
             f"spec.molejo: this document declares spec version "
-            f"{_render(version)} but uses spec version {needed} vocabulary "
-            f"at {because}"
+            f"{_quote(version)} but uses spec version {_quote(needed)} "
+            f"vocabulary at {because}"
         )
 
     if "loop" in document and not isinstance(document["loop"], bool):

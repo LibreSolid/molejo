@@ -362,7 +362,7 @@ def _spline_edges(primitive, values, frame, loc):
     return [edge], entry, exit_frame, True
 
 
-#: The whole v1 path vocabulary but the wrap, which has a construction of
+#: The whole 0.1 path vocabulary but the wrap, which has a construction of
 #: its own. There is no fallback here because there is nothing left to
 #: fall back from: validation refuses a primitive this table does not name.
 _EDGES = {

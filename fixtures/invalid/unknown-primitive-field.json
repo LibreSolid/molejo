@@ -1,7 +1,7 @@
 {
   "name": "unknown field inside a path primitive",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [{"type": "helix", "radius": 14.0, "turns": 6.5, "height": 46.8, "pitch": 7.2}],
     "tessellation": {"path": 240, "profile": 16}

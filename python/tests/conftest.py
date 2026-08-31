@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
 #: The hand-written canonical document for the README's valve spring.
 SPRING_DOCUMENT = {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [
         {

@@ -11,7 +11,7 @@ substrings the rejection must name:
 ```json
 {
   "name": "unknown path primitive",
-  "spec": { "molejo": 1, "…": "…" },
+  "spec": { "molejo": "0.1", "…": "…" },
   "must_mention": ["path[1]", "unknown path primitive", "squiggle"]
 }
 ```
@@ -36,7 +36,7 @@ except `manifest.json`, which is the index rather than a fixture:
 {
   "name": "cylinder: a circle profile swept along one line",
   "description": "what this fixture exists to catch",
-  "spec": { "molejo": 1, "…": "…" },
+  "spec": { "molejo": "0.1", "…": "…" },
   "tolerance": { "python": 1e-12, "js": 1e-6 },
   "brep": { "tolerance": 0.062 },
   "faces": [[0, 1, 13], "…"],

@@ -1,7 +1,7 @@
 {
   "name": "a document that understates its own spec version",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "polygon",
       "points": [[-0.4, -3.0], [0.9, -3.0], [0.9, 3.0], [-0.4, 3.0]]
@@ -19,7 +19,8 @@
   },
   "must_mention": [
     "molejo",
-    "spec version 2 vocabulary",
+    "declares spec version '0.1'",
+    "spec version '0.2' vocabulary",
     "path[0].around[1].turn"
   ]
 }

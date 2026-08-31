@@ -1,7 +1,7 @@
 {
   "name": "missing tessellation counts",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}]
   },

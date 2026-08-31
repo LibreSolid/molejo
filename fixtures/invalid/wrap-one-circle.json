@@ -1,7 +1,7 @@
 {
   "name": "wrap around fewer than two circles",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 1.0},
     "path": [{"type": "wrap", "around": [{"center": [0.0, 0.0], "radius": 5.1}]}],
     "loop": true,

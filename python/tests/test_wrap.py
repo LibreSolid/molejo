@@ -80,7 +80,7 @@ def belt(
     if phase is not None:
         wrap["phase"] = phase
     document = {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "polygon", "points": [list(point) for point in section]},
         "path": [wrap],
         "loop": loop,
@@ -116,7 +116,7 @@ def toothed(count=8, height=0.75, pitch=2.5, face=None):
 def bar(section, to=(0.0, 0.0, 10.0), path=3):
     """A polygon profile swept along one line: the polygon's own slice."""
     return {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "polygon", "points": [list(point) for point in section]},
         "path": [{"type": "line", "to": list(to)}],
         "loop": False,
@@ -855,7 +855,7 @@ def test_the_two_tooth_faces_are_the_two_faces_of_the_section():
 
 
 def test_an_absent_face_is_the_inner_one():
-    # Every v1 document means what it always meant.
+    # Every 0.1 document means what it always meant.
     segments, teeth = 9, toothed(count=17, height=0.5)
     named = molejo.evaluate(
         belt(
@@ -1063,7 +1063,7 @@ def test_a_dangling_parameter_in_the_anchor_names_its_slot():
 
 def test_a_looped_chain_that_is_not_a_wrap_is_still_not_evaluated():
     document = {
-        "molejo": 1,
+        "molejo": "0.1",
         "profile": {"type": "circle", "radius": 1.0},
         "path": [
             {"type": "line", "to": [10.0, 0.0, 0.0]},

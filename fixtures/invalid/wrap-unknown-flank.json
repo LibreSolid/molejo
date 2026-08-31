@@ -1,7 +1,7 @@
 {
   "name": "toothed wrap with an unknown flank",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "polygon", "points": [[-1.0, 0.0], [1.0, 0.0], [1.0, 1.5], [-1.0, 1.5]]},
     "path": [
       {

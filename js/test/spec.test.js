@@ -20,7 +20,7 @@ import {
 } from '../src/index.js';
 
 const SPRING_DOCUMENT = {
-  molejo: 1,
+  molejo: '0.1',
   profile: { type: 'circle', radius: 2.0 },
   path: [{ type: 'helix', radius: 14.0, turns: 6.5, height: { param: 'height' } }],
   loop: false,
@@ -31,20 +31,37 @@ function spring() {
   return JSON.parse(JSON.stringify(SPRING_DOCUMENT));
 }
 
-test('the spec versions read are one and two', () => {
-  // Two, because v2 only adds vocabulary: every v1 document still says
-  // what it always said. SPEC_VERSION is the newest of them.
-  assert.deepEqual(SPEC_VERSIONS, [1, 2]);
-  assert.equal(SPEC_VERSION, 2);
+test('the spec versions read are the releases that minted them', () => {
+  // A spec version is the MAJOR.MINOR of the release that introduced it,
+  // as a string: "0.1" is what molejo 0.1.0 shipped (spelled `1` at the
+  // time), "0.2" is the reverse bend. Two of them, because 0.2 only adds
+  // vocabulary: every 0.1 document still says what it always said.
+  // SPEC_VERSION is the newest of them.
+  assert.deepEqual(SPEC_VERSIONS, ['0.1', '0.2']);
+  assert.equal(SPEC_VERSION, '0.2');
+});
+
+test('a numeric version is refused rather than read as the old spelling', () => {
+  // molejo 0.1.0 wrote the integer 1. That spelling is gone, not aliased:
+  // the message names what it found and the versions read, so a
+  // 0.1.0-era document fails loudly and its fix is one edit.
+  const document = spring();
+  document.molejo = 1;
+  assert.throws(() => parseSpec(document), (error) =>
+    error instanceof SpecError &&
+    error.message.includes('spec.molejo') &&
+    error.message.includes('spec version string') &&
+    error.message.includes("'0.1'") &&
+    error.message.includes("'0.2'"));
 });
 
 test('a document declares the lowest version it needs', () => {
-  assert.equal(requiredVersion(spring()), 1);
+  assert.equal(requiredVersion(spring()), '0.1');
 });
 
-test('a v1 document may not use v2 vocabulary', () => {
+test('a 0.1 document may not use 0.2 vocabulary', () => {
   const document = {
-    molejo: 1,
+    molejo: '0.1',
     profile: {
       type: 'polygon',
       points: [[-0.4, -1.0], [0.9, -1.0], [0.9, 1.0], [-0.4, 1.0]],
@@ -60,11 +77,11 @@ test('a v1 document may not use v2 vocabulary', () => {
     loop: true,
     tessellation: { path: 12, profile: 4 },
   };
-  assert.equal(requiredVersion(document), 2);
+  assert.equal(requiredVersion(document), '0.2');
   assert.throws(() => parseSpec(document), (error) =>
     error instanceof SpecError && error.message.includes('path[0].around[1].turn'));
 
-  document.molejo = 2;
+  document.molejo = '0.2';
   assert.deepEqual(parseSpec(document), document);
 });
 
@@ -93,7 +110,7 @@ test('parsing does not mutate the caller document', () => {
   assert.equal('loop' in document, false);
 });
 
-test('every v1 path primitive parses', () => {
+test('every 0.1 path primitive parses', () => {
   const primitives = [
     { type: 'line', to: [0.0, 0.0, 10.0] },
     { type: 'line', to: [{ param: 'x' }, 0.0, { param: 'z' }] },
@@ -135,7 +152,7 @@ test('every v1 path primitive parses', () => {
   }
 });
 
-test('every v1 profile parses', () => {
+test('every 0.1 profile parses', () => {
   const profiles = [
     { type: 'circle', radius: 2.0 },
     { type: 'circle', radius: { param: 'wire' } },
@@ -192,7 +209,7 @@ test('a spec error is an error', () => {
   assert.ok(SpecError.prototype instanceof Error);
 });
 
-test('every v1 path primitive evaluates', () => {
+test('every 0.1 path primitive evaluates', () => {
   // The whole path vocabulary is implemented, so there is no branch left
   // that names one as missing: an unknown type is a structural refusal.
   const document = spring();

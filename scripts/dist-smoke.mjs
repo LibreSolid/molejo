@@ -44,8 +44,8 @@ check(
   `resolved molejo to ${resolved}, which is not an installed package`,
 );
 report(
-  `molejo ${VERSION} (reads spec v${SPEC_VERSIONS.join(', v')}, writes at most ` +
-    `v${SPEC_VERSION}) resolved from ${resolved}`,
+  `molejo ${VERSION} (reads spec ${SPEC_VERSIONS.join(', ')}, writes at most ` +
+    `${SPEC_VERSION}) resolved from ${resolved}`,
 );
 
 // --- the cylinder parity fixture, from the repository ----------------------
@@ -57,7 +57,7 @@ const tolerance = fixture.tolerance.js;
 
 const document = parseSpec(fixture.spec);
 // A version this implementation reads, not the newest it reads: the
-// cylinder is a spec v1 document and must stay one.
+// cylinder is a spec 0.1 document and must stay one.
 check(
   SPEC_VERSIONS.includes(document.molejo),
   `the fixture declares spec version ${document.molejo}, which this build does not read`,

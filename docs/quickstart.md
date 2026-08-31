@@ -73,7 +73,7 @@ spec = spring.to_json()
 
 ```json
 {
-  "molejo": 1,
+  "molejo": "0.1",
   "profile": {"type": "circle", "radius": 1.0},
   "path": [{"type": "helix", "radius": 6.0, "turns": 2.5,
             "height": {"param": "height"}}],

@@ -2,7 +2,7 @@
   "name": "three-pulley belt: a toothed wrap closed into a loop",
   "description": "The first closed loop and the first polygon profile. A belt of rectangular section (1.3 thick, 6 wide, inner face at x = -0.4) runs outside three circles listed in their clockwise circulation, one of them an idler whose centre is bound to 'idler', with six trapezoidal teeth whose pattern origin is bound to 'travel'. Ten segments are spent on each of the 2*3 elements -- three tangent spans and three arcs -- so the path has 60 rings and no more: a loop drops the duplicate ring and both caps, giving V = 60*4 and F = 2*60*4, with ring 59's quads wrapping onto ring 0. The two bindings move the idler and circulate the teeth at once: an evaluator that let either one touch the counts, that spent its segments per wrap rather than per element, that ran the belt counter-clockwise, or that took the tooth period from the declared pitch rather than from the loop length over the count, fails here.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "polygon",
       "points": [

@@ -1,7 +1,7 @@
 {
   "name": "spline with nowhere to go",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [{"type": "spline", "points": []}],
     "tessellation": {"path": 64, "profile": 16}

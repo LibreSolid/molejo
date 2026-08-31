@@ -1,0 +1,10 @@
+{
+  "name": "a spec version written as a number, the way molejo 0.1.0 wrote it",
+  "spec": {
+    "molejo": 1,
+    "profile": {"type": "circle", "radius": 2.0},
+    "path": [{"type": "line", "to": [0.0, 0.0, 10.0]}],
+    "tessellation": {"path": 32, "profile": 16}
+  },
+  "must_mention": ["molejo", "must be a spec version string", "'0.1'", "got 1"]
+}

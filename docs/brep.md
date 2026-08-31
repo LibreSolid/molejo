@@ -92,4 +92,4 @@ evaluator and checked on volume and area against both the mesh arrays
 and an independently written closed form (at 1e-6). B-rep compatibility
 is an *admission rule* for the spec vocabulary rather than a feature
 bolted on after: a primitive that could not be constructed exactly
-would not have entered spec v1.
+would not have entered spec 0.1.

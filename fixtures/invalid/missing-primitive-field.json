@@ -1,7 +1,7 @@
 {
   "name": "path primitive missing a required field",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {"type": "circle", "radius": 2.0},
     "path": [{"type": "arc", "center": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0]}],
     "tessellation": {"path": 32, "profile": 16}

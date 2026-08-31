@@ -2,7 +2,7 @@
   "name": "carriage belt: an anchored open belt, closed through its clamp",
   "description": "The Metamaquina2 belt: two 5.1 pitch-radius pulleys 210 apart, a rectangular section, and trapezoidal teeth anchored to the carriage -- span 0 at a distance bound to 'y'. The belt is physically open, its two ends clamped to the carriage, so it evaluates as the same closed loop an endless belt does: the loop passes through the clamp. Sixteen segments on each of the four elements give 64 rings, V = 64*4 and F = 2*64*4, and the two bindings run the carriage from 40 to 170 along its span. The teeth must travel with it -- the same tooth stays at the clamp -- which is what an evaluator that read the anchor as a phase, or measured it from the wrong span, gets wrong. The tooth count is coarsened to four for the size of this file; the real belt's 180 teeth would ask for 180 segments an element.",
   "spec": {
-    "molejo": 1,
+    "molejo": "0.1",
     "profile": {
       "type": "polygon",
       "points": [
