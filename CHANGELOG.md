@@ -3,7 +3,7 @@
 All notable changes to molejo. The Python and JavaScript packages
 release together and share one version; each entry covers both.
 
-## 0.2.0 — 2026-08-30
+## 0.2.0 — 2026-09-01
 
 Spec version `"0.2"`: the reverse bend and the outward tooth face, so a
 belt can be driven from *outside* its own circuit. Both packages
